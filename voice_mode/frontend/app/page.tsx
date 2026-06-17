@@ -2,9 +2,9 @@
 
 import { CloseIcon } from "@/components/CloseIcon";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
+import ReactiveVisualizer from "@/components/ReactiveVisualizer";
 import TranscriptionView from "@/components/TranscriptionView";
 import {
-  BarVisualizer,
   DisconnectButton,
   RoomAudioRenderer,
   RoomContext,
@@ -13,14 +13,19 @@ import {
   useVoiceAssistant,
 } from "@livekit/components-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Room, RoomEvent } from "livekit-client";
+import { ConnectionState, Room, RoomEvent } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
 import type { ConnectionDetails } from "./api/connection-details/route";
+import { useKeepAwake } from "@/hooks/useKeepAwake";
 
 export default function Page() {
   const [room] = useState(new Room());
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [connected, setConnected] = useState(false);
+
+  // Keep the audio session alive while connected so the call survives the phone
+  // screen turning off (Android Chrome otherwise freezes the backgrounded tab).
+  useKeepAwake(connected);
 
   const onConnectButtonClicked = useCallback(async () => {
     // Generate room connection details, including:
@@ -33,35 +38,35 @@ export default function Page() {
     // own participant name, and possibly to choose from existing rooms to join.
 
     setError("");
-    
+
     const url = new URL(
       process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ?? "/api/connection-details",
       window.location.origin
     );
-    url.searchParams.set('password', password);
-    
+
     const response = await fetch(url.toString());
-    
+
     if (!response.ok) {
-      if (response.status === 401) {
-        setError("Invalid password");
-      } else {
-        setError("Connection failed");
-      }
+      setError("Connection failed");
       return;
     }
-    
+
     const connectionDetailsData: ConnectionDetails = await response.json();
 
     await room.connect(connectionDetailsData.serverUrl, connectionDetailsData.participantToken);
     await room.localParticipant.setMicrophoneEnabled(true);
-  }, [room, password]);
+  }, [room]);
 
   useEffect(() => {
+    const onConnState = (state: ConnectionState) => {
+      setConnected(state === ConnectionState.Connected);
+    };
     room.on(RoomEvent.MediaDevicesError, onDeviceFailure);
+    room.on(RoomEvent.ConnectionStateChanged, onConnState);
 
     return () => {
       room.off(RoomEvent.MediaDevicesError, onDeviceFailure);
+      room.off(RoomEvent.ConnectionStateChanged, onConnState);
     };
   }, [room]);
 
@@ -69,10 +74,8 @@ export default function Page() {
     <main data-lk-theme="default" className="h-full grid content-center bg-[var(--lk-bg)]">
       <RoomContext.Provider value={room}>
         <div className="lk-room-container max-w-[1024px] w-[90vw] mx-auto max-h-[90vh]">
-          <SimpleVoiceAssistant 
+          <SimpleVoiceAssistant
             onConnectButtonClicked={onConnectButtonClicked}
-            password={password}
-            setPassword={setPassword}
             error={error}
           />
         </div>
@@ -81,10 +84,8 @@ export default function Page() {
   );
 }
 
-function SimpleVoiceAssistant(props: { 
+function SimpleVoiceAssistant(props: {
   onConnectButtonClicked: () => void;
-  password: string;
-  setPassword: (password: string) => void;
   error: string;
 }) {
   const { state: agentState } = useVoiceAssistant();
@@ -102,18 +103,6 @@ function SimpleVoiceAssistant(props: {
             className="grid items-center justify-center h-full"
           >
             <div className="flex flex-col items-center gap-4">
-              <input
-                type="password"
-                placeholder="Enter password"
-                value={props.password}
-                onChange={(e) => props.setPassword(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    props.onConnectButtonClicked();
-                  }
-                }}
-                className="px-4 py-2 bg-gray-800 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-white"
-              />
               {props.error && (
                 <p className="text-red-500 text-sm">{props.error}</p>
               )}
@@ -164,14 +153,8 @@ function AgentVisualizer() {
     );
   }
   return (
-    <div className="h-[300px] w-full">
-      <BarVisualizer
-        state={agentState}
-        barCount={5}
-        trackRef={audioTrack}
-        className="agent-visualizer"
-        options={{ minHeight: 24 }}
-      />
+    <div className="h-[320px] w-full">
+      <ReactiveVisualizer trackRef={audioTrack} state={agentState} />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import GhostText from "@/components/GhostText";
 import useCombinedTranscriptions from "@/hooks/useCombinedTranscriptions";
 import * as React from "react";
 
@@ -30,7 +31,7 @@ export default function TranscriptionView() {
                 : "bg-gray-800 rounded-md p-2 self-end fit-content"
             }
           >
-            {segment.text}
+            {segment.role === "assistant" ? <GhostText text={segment.text} /> : segment.text}
           </div>
         ))}
       </div>

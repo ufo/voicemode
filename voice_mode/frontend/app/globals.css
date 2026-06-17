@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Retro-computer display face for the ghost-typed transcript. Uses the free, OFL-licensed
+ * "Wallpoet" (loaded via next/font in layout.tsx) — the closest open analog to the blocky
+ * 70s "Data 70"/"Westminster" look. Rendered in classic phosphor green with a CRT glow.
+ */
+.font-ghost {
+  font-family: var(--font-retro-mono), ui-monospace, "Courier New", monospace;
+  letter-spacing: 0.06em;
+  color: #33ff66;
+  text-shadow:
+    0 0 6px rgba(51, 255, 102, 0.55),
+    0 0 14px rgba(51, 255, 102, 0.25);
+}
+
 :root {
   --lk-va-bar-width: 72px;
   --lk-control-bar-height: unset;

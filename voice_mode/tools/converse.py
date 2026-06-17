@@ -224,6 +224,7 @@ async def startup_initialization():
 async def get_tts_config(provider: Optional[str] = None, voice: Optional[str] = None, model: Optional[str] = None, instructions: Optional[str] = None):
     """Get TTS configuration - simplified to use direct config"""
     from voice_mode.provider_discovery import detect_provider_type
+    from voice_mode.config import TTS_BASE_URLS, TTS_MODELS, TTS_VOICES
 
     # Validate instructions usage
     if instructions and model != "gpt-4o-mini-tts":
@@ -999,7 +1000,7 @@ async def check_livekit_available() -> bool:
         return False
 
 
-async def livekit_converse(message: str, room_name: str = "", timeout: float = 60.0) -> str:
+async def livekit_converse(message: str, room_name: str = "", timeout: float = 60.0, speed: Optional[float] = None) -> str:
     """Have a conversation using LiveKit transport"""
     if not LIVEKIT_AVAILABLE:
         return "Error: LiveKit not installed. Install with: uv tool install voice-mode[livekit]"
@@ -1032,7 +1033,8 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
         tts_api_key = OPENAI_API_KEY if tts_config.get('provider_type') == 'openai' else "dummy-key-for-local"
         stt_api_key = OPENAI_API_KEY if stt_config.get('provider_type') == 'openai' else "dummy-key-for-local"
         
-        tts_client = lk_openai.TTS(voice=tts_config['voice'], base_url=tts_config['base_url'], model=tts_config['model'], api_key=tts_api_key)
+        tts_kwargs = {} if speed is None else {"speed": speed}
+        tts_client = lk_openai.TTS(voice=tts_config['voice'], base_url=tts_config['base_url'], model=tts_config['model'], api_key=tts_api_key, **tts_kwargs)
         stt_client = lk_openai.STT(base_url=stt_config['base_url'], model=stt_config['model'], api_key=stt_api_key)
         
         # Create simple agent that speaks and listens
@@ -1359,7 +1361,7 @@ consult the MCP resources listed above.
             if transport == "livekit":
                 # For LiveKit, use the existing function but with the message parameter
                 # Use listen_duration_max instead of timeout for consistent behavior
-                livekit_result = await livekit_converse(message, room_name, listen_duration_max)
+                livekit_result = await livekit_converse(message, room_name, listen_duration_max, speed)
 
                 # Track LiveKit interaction (simplified since we don't have detailed timing)
                 success = not livekit_result.startswith("Error:") and not livekit_result.startswith("No ")

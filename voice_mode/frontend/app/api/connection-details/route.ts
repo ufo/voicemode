@@ -1,14 +1,11 @@
 import { AccessToken, AccessTokenOptions, VideoGrant } from "livekit-server-sdk";
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // NOTE: Environment variables can be defined in `.env.local` or passed from voice-mode config
 const API_KEY = process.env.LIVEKIT_API_KEY || "devkey";
 const API_SECRET = process.env.LIVEKIT_API_SECRET || "secret";
-// TODO: Fix environment variable loading - hardcoded for now
-const LIVEKIT_URL = "wss://x1:8443"; // process.env.LIVEKIT_URL || "ws://localhost:7880";
-
-// Password protection - set this in your .env.local file
-const ACCESS_PASSWORD = process.env.LIVEKIT_ACCESS_PASSWORD || "voicemode123";
+// Returned to the browser as serverUrl; must be reachable from the phone over WLAN.
+const LIVEKIT_URL = process.env.LIVEKIT_URL || "ws://192.168.178.37:7880";
 
 // don't cache the results
 export const revalidate = 0;
@@ -20,17 +17,9 @@ export type ConnectionDetails = {
   participantToken: string;
 };
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Check for password in query params or Authorization header
-    const url = new URL(request.url);
-    const password = url.searchParams.get('password') || 
-                    request.headers.get('x-access-password');
-    
-    if (password !== ACCESS_PASSWORD) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
-    
+    // Password protection removed: open access on the local WLAN.
     // These checks are now optional since we have defaults
     // but we can still validate they're not empty strings
     if (!LIVEKIT_URL) {
