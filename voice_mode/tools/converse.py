@@ -46,6 +46,8 @@ from voice_mode.config import (
     LIVEKIT_URL,
     LIVEKIT_API_KEY,
     LIVEKIT_API_SECRET,
+    LIVEKIT_ROOM_NAME,
+    LIVEKIT_JOIN_TIMEOUT,
     PREFER_LOCAL,
     AUDIO_FEEDBACK_ENABLED,
     service_processes,
@@ -1010,20 +1012,12 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
         from livekit.agents import Agent, AgentSession
         from livekit.plugins import openai as lk_openai, silero
         
-        # Auto-discover room if needed
+        # Single-conversation model: join one fixed room and wait for the phone,
+        # rather than discovering rooms by participant count. A stable name means a
+        # phone reload rejoins the same room instead of stranding itself in a new one.
         if not room_name:
-            api_url = LIVEKIT_URL.replace("ws://", "http://").replace("wss://", "https://")
-            lk_api = api.LiveKitAPI(api_url, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-            
-            rooms = await lk_api.room.list_rooms(api.ListRoomsRequest())
-            for room in rooms.rooms:
-                if room.num_participants > 0:
-                    room_name = room.name
-                    break
-            
-            if not room_name:
-                return "No active LiveKit rooms found"
-        
+            room_name = LIVEKIT_ROOM_NAME
+
         # Setup TTS and STT for LiveKit
         # Get default providers from registry
         tts_config = await get_tts_config()
@@ -1110,11 +1104,18 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
         
         room = rtc.Room()
         await room.connect(LIVEKIT_URL, token.to_jwt())
-        
-        if not room.remote_participants:
-            await room.disconnect()
-            return "No participants in LiveKit room"
-        
+
+        # Wait in the (possibly empty) room for the phone to join, rather than
+        # bailing immediately when alone. The agent only starts speaking once a
+        # participant is present (session.start -> on_enter), so the greeting is
+        # never narrated to an empty room.
+        join_deadline = time.time() + LIVEKIT_JOIN_TIMEOUT
+        while not room.remote_participants:
+            if time.time() > join_deadline:
+                await room.disconnect()
+                return f"No client joined the LiveKit room within {LIVEKIT_JOIN_TIMEOUT:.0f}s"
+            await asyncio.sleep(0.2)
+
         agent = VoiceAgent()
         # Configure Silero VAD with less aggressive settings for better end-of-turn detection
         vad = silero.VAD.load(

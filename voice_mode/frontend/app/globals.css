@@ -88,8 +88,30 @@
 .hal-led--on {
   background: #4dff7a;
   box-shadow:
-    0 0 6px rgba(77, 255, 122, 0.9),
-    0 0 14px rgba(77, 255, 122, 0.5);
+    0 0 6px rgba(77, 255, 122, 0.95),
+    0 0 14px rgba(77, 255, 122, 0.75),
+    0 0 26px rgba(77, 255, 122, 0.5),
+    0 0 40px rgba(77, 255, 122, 0.28);
+  /* Gentle breathing pulse so the "online" glow reads as a live signal. */
+  animation: hal-led-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes hal-led-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 6px rgba(77, 255, 122, 0.9),
+      0 0 14px rgba(77, 255, 122, 0.6),
+      0 0 26px rgba(77, 255, 122, 0.4),
+      0 0 38px rgba(77, 255, 122, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 9px rgba(77, 255, 122, 1),
+      0 0 20px rgba(77, 255, 122, 0.9),
+      0 0 34px rgba(77, 255, 122, 0.65),
+      0 0 52px rgba(77, 255, 122, 0.38);
+  }
 }
 
 /* --- Glowing console buttons ---------------------------------------------
@@ -180,6 +202,89 @@ button.hal-btn {
     0 0 14px rgba(40, 90, 160, 0.25);
 }
 
+@keyframes ghost-flicker {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  6% {
+    filter: brightness(0.94);
+  }
+  8% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.02);
+  }
+  71% {
+    filter: brightness(0.95);
+  }
+  73% {
+    filter: brightness(1);
+  }
+}
+
+/* Vignette for the WHOLE ghost screen: a soft edge falloff that fakes the slight
+   curvature of a 70s tube. Covers the panel (grid included); ::after holds the
+   drifting scan band, so this overlay lives on ::before. No scanlines here — those
+   ride on the characters only (see .ghost-screen-text below). */
+.ghost-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 22;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+/* Console text only: scanlines + flicker on the glowing characters, leaving the
+   engineering grid crisp. The scanline mask punches faint horizontal gaps into the
+   text itself (the grid lives on the parent, so it's untouched). The brightness
+   flicker is applied here too, so only the text wavers — not the grid. */
+.ghost-screen-text {
+  animation: ghost-flicker 4s steps(40) infinite;
+  -webkit-mask-image: repeating-linear-gradient(
+    0deg,
+    #000 0px,
+    #000 1.5px,
+    rgba(0, 0, 0, 0.45) 2px,
+    rgba(0, 0, 0, 0.45) 3px
+  );
+  mask-image: repeating-linear-gradient(
+    0deg,
+    #000 0px,
+    #000 1.5px,
+    rgba(0, 0, 0, 0.45) 2px,
+    rgba(0, 0, 0, 0.45) 3px
+  );
+}
+
+/* Ghost-writer caret: a solid bright square block (not the old thin bar), in the
+   text's own colour with a phosphor halo so it reads as luminous. Hard on/off blink
+   like a real terminal cursor. */
+.ghost-caret {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-left: 0.08em;
+  vertical-align: 0.02em;
+  background: currentColor;
+  box-shadow: 0 0 7px currentColor;
+  animation: ghost-caret-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes ghost-caret-blink {
+  0%,
+  49.999% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Occasional scan line: a soft, blue vertical band drifts left→right over ~4s,
    then sits idle for several seconds before the next pass. The panel's
    overflow-hidden clips it at the edges; z-index keeps it above the fade masks. */
@@ -233,6 +338,11 @@ button.hal-btn {
   .ghost-panel::after {
     animation: none;
     opacity: 0;
+  }
+  .ghost-screen-text,
+  .ghost-caret,
+  .hal-led--on {
+    animation: none;
   }
 }
 

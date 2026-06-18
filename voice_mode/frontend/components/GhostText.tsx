@@ -31,7 +31,7 @@ export default function GhostText({ text, charsPerTick = 1, tickMs = 22 }: Ghost
   return (
     <span className="font-ghost">
       {text.slice(0, count)}
-      {typing && <span className="opacity-60 animate-pulse">▍</span>}
+      {typing && <span className="ghost-caret" aria-hidden="true" />}
     </span>
   );
 }

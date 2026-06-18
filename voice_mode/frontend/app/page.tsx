@@ -49,6 +49,14 @@ export default function Page() {
   // VOICE INPUT: connect (+ open mic) on first press; once connected it toggles the
   // microphone so you can mute/unmute without dropping the room.
   const onVoiceInput = useCallback(async () => {
+    // Mobile Chrome only sounds REMOTE tracks after startAudio() runs inside a user
+    // gesture. The bot joins per-turn, so its audio track always arrives AFTER connect;
+    // arm playback on every press so whatever track shows up later is audible.
+    try {
+      await room.startAudio();
+    } catch {
+      // No-op: startAudio throws if there's no audio context yet (pre-connect) — harmless.
+    }
     if (room.state !== ConnectionState.Connected) {
       await connect();
       return;
@@ -115,7 +123,7 @@ function HalTitleBar(props: { connected: boolean }) {
         <span className="hal-title-word -mr-[0.28em]">HAL</span>
       </div>
       <div className="hal-title-right flex items-center justify-start flex-1 py-3 pl-5 relative">
-        <span className="hal-title-word hal-title-word--bright">9001</span>
+        <span className="hal-title-word hal-title-word--bright">101</span>
         <span
           className={`hal-led ${props.connected ? "hal-led--on" : ""}`}
           title={props.connected ? "online" : "offline"}
@@ -160,7 +168,7 @@ function ButtonBar(props: {
           {live ? "Listening" : "Voice Input"}
         </button>
         <button className="hal-btn flex-1" onClick={props.onClear}>
-          Clear
+          Reset
         </button>
       </div>
       {props.error && <p className="text-red-400 text-xs">{props.error}</p>}

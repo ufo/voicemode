@@ -585,6 +585,13 @@ LIVEKIT_URL = os.getenv("LIVEKIT_URL", f"ws://localhost:{LIVEKIT_PORT}")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "devkey")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
 
+# Single-conversation model: one phone, one room. The bot joins this fixed room
+# (instead of discovering rooms by participant count) so a phone reload rejoins
+# the same room. The frontend mints tokens for the same name (LIVEKIT_ROOM_NAME).
+LIVEKIT_ROOM_NAME = os.getenv("LIVEKIT_ROOM_NAME", "voicemode")
+# How long the bot waits in an empty room for the phone to join before giving up.
+LIVEKIT_JOIN_TIMEOUT = float(os.getenv("VOICEMODE_LIVEKIT_JOIN_TIMEOUT", "120"))
+
 # LiveKit Frontend configuration
 FRONTEND_HOST = os.getenv("VOICEMODE_FRONTEND_HOST", "127.0.0.1")
 FRONTEND_PORT = int(os.getenv("VOICEMODE_FRONTEND_PORT", "3000"))

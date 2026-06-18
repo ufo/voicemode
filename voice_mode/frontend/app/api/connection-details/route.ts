@@ -33,9 +33,11 @@ export async function GET() {
       throw new Error("LIVEKIT_API_SECRET is empty");
     }
 
-    // Generate participant token
+    // Single-conversation model: one phone, one fixed room. The bot joins this
+    // same room by name (LIVEKIT_ROOM_NAME, default "voicemode"), so a phone
+    // reload rejoins the same room instead of minting a fresh random one.
     const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
-    const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
+    const roomName = process.env.LIVEKIT_ROOM_NAME || "voicemode";
     const participantToken = await createParticipantToken(
       { identity: participantIdentity },
       roomName
