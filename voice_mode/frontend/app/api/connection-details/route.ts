@@ -5,7 +5,8 @@ import { NextResponse } from "next/server";
 const API_KEY = process.env.LIVEKIT_API_KEY || "devkey";
 const API_SECRET = process.env.LIVEKIT_API_SECRET || "secret";
 // Returned to the browser as serverUrl; must be reachable from the phone over WLAN.
-const LIVEKIT_URL = process.env.LIVEKIT_URL || "ws://192.168.178.37:7880";
+// Set LIVEKIT_URL in .env.local, e.g. ws://YOUR_LAN_IP:7880
+const LIVEKIT_URL = process.env.LIVEKIT_URL;
 
 // don't cache the results
 export const revalidate = 0;

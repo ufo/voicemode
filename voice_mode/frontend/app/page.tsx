@@ -1,18 +1,14 @@
 "use client";
 
-import { CloseIcon } from "@/components/CloseIcon";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
 import ReactiveVisualizer from "@/components/ReactiveVisualizer";
 import TranscriptionView from "@/components/TranscriptionView";
 import {
-  DisconnectButton,
   RoomAudioRenderer,
   RoomContext,
   VideoTrack,
-  VoiceAssistantControlBar,
   useVoiceAssistant,
 } from "@livekit/components-react";
-import { AnimatePresence, motion } from "framer-motion";
 import { ConnectionState, Room, RoomEvent } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
 import type { ConnectionDetails } from "./api/connection-details/route";
@@ -22,21 +18,16 @@ export default function Page() {
   const [room] = useState(new Room());
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
 
   // Keep the audio session alive while connected so the call survives the phone
   // screen turning off (Android Chrome otherwise freezes the backgrounded tab).
   useKeepAwake(connected);
 
-  const onConnectButtonClicked = useCallback(async () => {
-    // Generate room connection details, including:
-    //   - A random Room name
-    //   - A random Participant name
-    //   - An Access Token to permit the participant to join the room
-    //   - The URL of the LiveKit server to connect to
-    //
-    // In real-world application, you would likely allow the user to specify their
-    // own participant name, and possibly to choose from existing rooms to join.
-
+  const connect = useCallback(async () => {
+    // Generate room connection details (room name, participant name, access token,
+    // and the LiveKit server URL) then join and open the mic. This is the work the
+    // old "Start a conversation" button did — it now lives behind VOICE INPUT.
     setError("");
 
     const url = new URL(
@@ -45,100 +36,92 @@ export default function Page() {
     );
 
     const response = await fetch(url.toString());
-
     if (!response.ok) {
       setError("Connection failed");
       return;
     }
 
     const connectionDetailsData: ConnectionDetails = await response.json();
-
     await room.connect(connectionDetailsData.serverUrl, connectionDetailsData.participantToken);
     await room.localParticipant.setMicrophoneEnabled(true);
   }, [room]);
+
+  // VOICE INPUT: connect (+ open mic) on first press; once connected it toggles the
+  // microphone so you can mute/unmute without dropping the room.
+  const onVoiceInput = useCallback(async () => {
+    if (room.state !== ConnectionState.Connected) {
+      await connect();
+      return;
+    }
+    await room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled);
+  }, [room, connect]);
+
+  // CLEAR: hard reset. Reloading is the simplest way to drop the room, wipe the
+  // transcript and release the mic in one shot.
+  const onClear = useCallback(() => {
+    window.location.reload();
+  }, []);
 
   useEffect(() => {
     const onConnState = (state: ConnectionState) => {
       setConnected(state === ConnectionState.Connected);
     };
+    const onMicState = () => {
+      setMicEnabled(room.localParticipant.isMicrophoneEnabled);
+    };
     room.on(RoomEvent.MediaDevicesError, onDeviceFailure);
     room.on(RoomEvent.ConnectionStateChanged, onConnState);
+    room.on(RoomEvent.LocalTrackPublished, onMicState);
+    room.on(RoomEvent.LocalTrackUnpublished, onMicState);
+    room.on(RoomEvent.TrackMuted, onMicState);
+    room.on(RoomEvent.TrackUnmuted, onMicState);
 
     return () => {
       room.off(RoomEvent.MediaDevicesError, onDeviceFailure);
       room.off(RoomEvent.ConnectionStateChanged, onConnState);
+      room.off(RoomEvent.LocalTrackPublished, onMicState);
+      room.off(RoomEvent.LocalTrackUnpublished, onMicState);
+      room.off(RoomEvent.TrackMuted, onMicState);
+      room.off(RoomEvent.TrackUnmuted, onMicState);
     };
   }, [room]);
 
   return (
     <main data-lk-theme="default" className="h-full grid content-center bg-[var(--lk-bg)]">
       <RoomContext.Provider value={room}>
-        <div className="lk-room-container max-w-[1024px] w-[90vw] mx-auto max-h-[90vh]">
-          <SimpleVoiceAssistant
-            onConnectButtonClicked={onConnectButtonClicked}
+        <div className="hal-console max-w-[640px] w-[94vw] mx-auto max-h-[96vh] flex flex-col gap-4">
+          <HalTitleBar connected={connected} />
+          <AgentVisualizer />
+          <ButtonBar
+            connected={connected}
+            micEnabled={micEnabled}
             error={error}
+            onVoiceInput={onVoiceInput}
+            onClear={onClear}
           />
+          <TranscriptionView />
+          <RoomAudioRenderer />
+          <AgentStatus />
         </div>
       </RoomContext.Provider>
     </main>
   );
 }
 
-function SimpleVoiceAssistant(props: {
-  onConnectButtonClicked: () => void;
-  error: string;
-}) {
-  const { state: agentState } = useVoiceAssistant();
-
+function HalTitleBar(props: { connected: boolean }) {
   return (
-    <>
-      <AnimatePresence mode="wait">
-        {agentState === "disconnected" ? (
-          <motion.div
-            key="disconnected"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.3, ease: [0.09, 1.04, 0.245, 1.055] }}
-            className="grid items-center justify-center h-full"
-          >
-            <div className="flex flex-col items-center gap-4">
-              {props.error && (
-                <p className="text-red-500 text-sm">{props.error}</p>
-              )}
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-                className="uppercase px-4 py-2 bg-white text-black rounded-md"
-                onClick={() => props.onConnectButtonClicked()}
-              >
-                Start a conversation
-              </motion.button>
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="connected"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3, ease: [0.09, 1.04, 0.245, 1.055] }}
-            className="flex flex-col items-center gap-4 h-full"
-          >
-            <AgentVisualizer />
-            <div className="flex-1 w-full">
-              <TranscriptionView />
-            </div>
-            <div className="w-full">
-              <ControlBar onConnectButtonClicked={props.onConnectButtonClicked} />
-            </div>
-            <RoomAudioRenderer />
-            <NoAgentNotification state={agentState} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+    <div className="hal-title flex w-full select-none">
+      <div className="hal-title-left flex items-center justify-end flex-1 py-3 pr-5">
+        <span className="hal-title-word -mr-[0.28em]">HAL</span>
+      </div>
+      <div className="hal-title-right flex items-center justify-start flex-1 py-3 pl-5 relative">
+        <span className="hal-title-word hal-title-word--bright">9001</span>
+        <span
+          className={`hal-led ${props.connected ? "hal-led--on" : ""}`}
+          title={props.connected ? "online" : "offline"}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -147,55 +130,47 @@ function AgentVisualizer() {
 
   if (videoTrack) {
     return (
-      <div className="h-[512px] w-[512px] rounded-lg overflow-hidden">
+      <div className="h-[300px] w-full rounded-lg overflow-hidden">
         <VideoTrack trackRef={videoTrack} />
       </div>
     );
   }
   return (
-    <div className="h-[320px] w-full">
+    <div className="h-[360px] w-full">
       <ReactiveVisualizer trackRef={audioTrack} state={agentState} />
     </div>
   );
 }
 
-function ControlBar(props: { onConnectButtonClicked: () => void }) {
-  const { state: agentState } = useVoiceAssistant();
-
+function ButtonBar(props: {
+  connected: boolean;
+  micEnabled: boolean;
+  error: string;
+  onVoiceInput: () => void;
+  onClear: () => void;
+}) {
+  const live = props.connected && props.micEnabled;
   return (
-    <div className="relative h-[60px]">
-      <AnimatePresence>
-        {agentState === "disconnected" && (
-          <motion.button
-            initial={{ opacity: 0, top: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, top: "-10px" }}
-            transition={{ duration: 1, ease: [0.09, 1.04, 0.245, 1.055] }}
-            className="uppercase absolute left-1/2 -translate-x-1/2 px-4 py-2 bg-white text-black rounded-md"
-            onClick={() => props.onConnectButtonClicked()}
-          >
-            Start a conversation
-          </motion.button>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {agentState !== "disconnected" && agentState !== "connecting" && (
-          <motion.div
-            initial={{ opacity: 0, top: "10px" }}
-            animate={{ opacity: 1, top: 0 }}
-            exit={{ opacity: 0, top: "-10px" }}
-            transition={{ duration: 0.4, ease: [0.09, 1.04, 0.245, 1.055] }}
-            className="flex h-8 absolute left-1/2 -translate-x-1/2  justify-center"
-          >
-            <VoiceAssistantControlBar controls={{ leave: false }} />
-            <DisconnectButton>
-              <CloseIcon />
-            </DisconnectButton>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="flex flex-col items-center gap-2">
+      <div className="flex w-full gap-3 justify-center">
+        <button
+          className={`hal-btn flex-1 ${live ? "hal-btn--active" : ""}`}
+          onClick={props.onVoiceInput}
+        >
+          {live ? "Listening" : "Voice Input"}
+        </button>
+        <button className="hal-btn flex-1" onClick={props.onClear}>
+          Clear
+        </button>
+      </div>
+      {props.error && <p className="text-red-400 text-xs">{props.error}</p>}
     </div>
   );
+}
+
+function AgentStatus() {
+  const { state: agentState } = useVoiceAssistant();
+  return <NoAgentNotification state={agentState} />;
 }
 
 function onDeviceFailure(error: Error) {

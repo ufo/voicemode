@@ -14,10 +14,10 @@ export default function TranscriptionView() {
   }, [combinedTranscriptions]);
 
   return (
-    <div className="relative h-[200px] w-[512px] max-w-[90vw] mx-auto">
-      {/* Fade-out gradient mask */}
-      <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-[var(--lk-bg)] to-transparent z-10 pointer-events-none" />
-      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[var(--lk-bg)] to-transparent z-10 pointer-events-none" />
+    <div className="ghost-panel relative h-[220px] w-full rounded-md overflow-hidden">
+      {/* Fade-out gradient mask (matches the panel's dark-blue background) */}
+      <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-[var(--ghost-panel-bg)] to-transparent z-10 pointer-events-none" />
+      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[var(--ghost-panel-bg)] to-transparent z-10 pointer-events-none" />
 
       {/* Scrollable content */}
       <div ref={containerRef} className="h-full flex flex-col gap-2 overflow-y-auto px-4 py-8">
@@ -28,7 +28,7 @@ export default function TranscriptionView() {
             className={
               segment.role === "assistant"
                 ? "p-2 self-start fit-content"
-                : "bg-gray-800 rounded-md p-2 self-end fit-content"
+                : "ghost-user-segment rounded-md p-2 self-end fit-content"
             }
           >
             {segment.role === "assistant" ? <GhostText text={segment.text} /> : segment.text}

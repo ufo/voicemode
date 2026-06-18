@@ -94,39 +94,67 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
       for (let i = 0; i < 6; i++) bass += smooth[i];
       bass /= 6;
 
-      level = lerp(level, clamp(energy * 1.7, 0, 1), energy * 1.7 > level ? 0.5 : 0.1);
-      bassS = lerp(bassS, clamp(bass * 1.6, 0, 1), bass * 1.6 > bassS ? 0.6 : 0.12);
+      level = lerp(level, clamp(energy * 3.0, 0, 1), energy * 3.0 > level ? 0.5 : 0.1);
+      bassS = lerp(bassS, clamp(bass * 2.8, 0, 1), bass * 2.8 > bassS ? 0.6 : 0.12);
 
       // HAL is never fully dark; a faint breathing baseline keeps the eye "awake".
       const st = stateRef.current;
       const breathe = (Math.sin(t * 1.1) * 0.5 + 0.5) * (st === "thinking" ? 0.18 : 0.08);
       const act = clamp(level + breathe * 0.4, 0, 1); // overall activity
 
-      const R = minDim * 0.32; // lens outer radius
+      const R = minDim * 0.38; // lens outer radius
 
       // --- Solid black backdrop (a lens reads wrong with motion trails) ---
       ctx.globalCompositeOperation = "source-over";
       ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, w, h);
 
-      // --- Lens housing bezel: recessed dark metal disc + ring highlights ---
-      const bezelR = R * 1.32;
-      const bezel = ctx.createRadialGradient(cx, cy - R * 0.15, R * 0.2, cx, cy, bezelR);
-      bezel.addColorStop(0, "#26262b");
-      bezel.addColorStop(0.55, "#141417");
-      bezel.addColorStop(1, "#040405");
-      ctx.fillStyle = bezel;
+      // --- Chrome bezel: brushed-metal ring around a dark lens housing ---
+      // Dark housing rim sits just inside the chrome so there's no gap to the lens.
+      const housingR = R * 1.2;
+      const housing = ctx.createRadialGradient(cx, cy - R * 0.15, R * 0.2, cx, cy, housingR);
+      housing.addColorStop(0, "#1c1c20");
+      housing.addColorStop(0.6, "#101013");
+      housing.addColorStop(1, "#040405");
+      ctx.fillStyle = housing;
       ctx.beginPath();
-      ctx.arc(cx, cy, bezelR, 0, Math.PI * 2);
+      ctx.arc(cx, cy, housingR, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.lineWidth = 1.2 * dpr;
-      for (const rr of [R * 1.26, R * 1.16, R * 1.06]) {
-        ctx.strokeStyle = "rgba(120,120,130,0.10)";
-        ctx.beginPath();
-        ctx.arc(cx, cy, rr, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+      // Chrome ring: a conic gradient fakes metallic reflections (bright near the
+      // top & bottom, dark at the sides), drawn as an annulus over the housing.
+      const chromeOuter = R * 1.2;
+      const chromeInner = R * 1.08;
+      const chrome = ctx.createConicGradient(-Math.PI / 2, cx, cy);
+      const chromeStops: [number, string][] = [
+        [0.0, "#f6f8fa"],
+        [0.08, "#aeb4ba"],
+        [0.2, "#43474c"],
+        [0.32, "#cfd3d7"],
+        [0.5, "#5f656b"],
+        [0.62, "#2b2d30"],
+        [0.74, "#dce0e3"],
+        [0.85, "#80868c"],
+        [0.94, "#3a3d41"],
+        [1.0, "#f6f8fa"],
+      ];
+      for (const [p, c] of chromeStops) chrome.addColorStop(p, c);
+      ctx.fillStyle = chrome;
+      ctx.beginPath();
+      ctx.arc(cx, cy, chromeOuter, 0, Math.PI * 2);
+      ctx.arc(cx, cy, chromeInner, 0, Math.PI * 2, true);
+      ctx.fill("evenodd");
+
+      // Bright rim on the outer edge, dark groove on the inner edge -> rounded metal.
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, chromeOuter - 0.75 * dpr, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, chromeInner + 0.75 * dpr, 0, Math.PI * 2);
+      ctx.stroke();
 
       const hot = clamp(level, 0, 1); // how white-hot the center burns
 
