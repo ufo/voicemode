@@ -1,8 +1,15 @@
 "use client";
 
-import { useMultibandTrackVolume, useTracks } from "@livekit/components-react";
+import {
+  useMultibandTrackVolume,
+  useRemoteParticipants,
+  useTracks,
+} from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useEffect, useRef } from "react";
+
+// The agent joins the room with this identity (see livekit_converse in converse.py).
+const AGENT_IDENTITY = "voice-mode-bot";
 
 // Reuse the hook's own track type so we stay in sync with the installed version.
 type TrackArg = Parameters<typeof useMultibandTrackVolume>[0];
@@ -42,6 +49,14 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
   bandsRef.current = bands;
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // The eye only burns red while Claude (the agent) is actually in the room. The bot
+  // joins per voice turn and leaves between turns, so the lens goes dormant (dark) in
+  // between. Mirror presence into a ref the rAF loop reads without re-subscribing.
+  const remoteParticipants = useRemoteParticipants();
+  const botPresent = remoteParticipants.some((p) => p.identity === AGENT_IDENTITY);
+  const presentRef = useRef(botPresent);
+  presentRef.current = botPresent;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -166,40 +181,54 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
       ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
       ctx.clip();
 
-      // --- The red lens glow (fades out before the clip edge) ---
-      const glowR = lensR * (0.82 + act * 0.16);
-      const lens = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-      lens.addColorStop(0, `hsla(${20 + hot * 30}, 100%, ${72 + hot * 22}%, 1)`);
-      lens.addColorStop(0.16, `hsla(${6 + hot * 18}, 100%, ${55 + hot * 18}%, 0.98)`);
-      lens.addColorStop(0.5, `hsla(0, 100%, ${30 + hot * 12}%, 0.92)`);
-      lens.addColorStop(0.82, "hsla(0, 100%, 16%, 0.55)");
-      lens.addColorStop(1, "hsla(0, 100%, 8%, 0)");
-      ctx.fillStyle = lens;
-      ctx.beginPath();
-      ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
-      ctx.fill();
+      if (presentRef.current) {
+        // --- The red lens glow (fades out before the clip edge) ---
+        const glowR = lensR * (0.82 + act * 0.16);
+        const lens = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+        lens.addColorStop(0, `hsla(${20 + hot * 30}, 100%, ${72 + hot * 22}%, 1)`);
+        lens.addColorStop(0.16, `hsla(${6 + hot * 18}, 100%, ${55 + hot * 18}%, 0.98)`);
+        lens.addColorStop(0.5, `hsla(0, 100%, ${30 + hot * 12}%, 0.92)`);
+        lens.addColorStop(0.82, "hsla(0, 100%, 16%, 0.55)");
+        lens.addColorStop(1, "hsla(0, 100%, 8%, 0)");
+        ctx.fillStyle = lens;
+        ctx.beginPath();
+        ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
+        ctx.fill();
 
-      // --- Additive bloom, also confined within the lens ---
-      ctx.globalCompositeOperation = "lighter";
-      const bloomR = lensR * (0.75 + act * 0.22);
-      const bloom = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, bloomR);
-      bloom.addColorStop(0, `hsla(2, 100%, 50%, ${0.18 + act * 0.4})`);
-      bloom.addColorStop(1, "hsla(2, 100%, 50%, 0)");
-      ctx.fillStyle = bloom;
-      ctx.beginPath();
-      ctx.arc(cx, cy, bloomR, 0, Math.PI * 2);
-      ctx.fill();
+        // --- Additive bloom, also confined within the lens ---
+        ctx.globalCompositeOperation = "lighter";
+        const bloomR = lensR * (0.75 + act * 0.22);
+        const bloom = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, bloomR);
+        bloom.addColorStop(0, `hsla(2, 100%, 50%, ${0.18 + act * 0.4})`);
+        bloom.addColorStop(1, "hsla(2, 100%, 50%, 0)");
+        ctx.fillStyle = bloom;
+        ctx.beginPath();
+        ctx.arc(cx, cy, bloomR, 0, Math.PI * 2);
+        ctx.fill();
 
-      // --- The pupil: a bright hot core that pulses with the low end ---
-      const pupilR = lensR * (0.11 + bassS * 0.16 + breathe * 0.03);
-      const pupil = ctx.createRadialGradient(cx, cy, 0, cx, cy, pupilR);
-      pupil.addColorStop(0, "rgba(255,255,245,0.98)");
-      pupil.addColorStop(0.4, `hsla(${42 + hot * 10}, 100%, 70%, 0.92)`);
-      pupil.addColorStop(1, "hsla(30, 100%, 55%, 0)");
-      ctx.fillStyle = pupil;
-      ctx.beginPath();
-      ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
-      ctx.fill();
+        // --- The pupil: a bright hot core that pulses with the low end ---
+        const pupilR = lensR * (0.11 + bassS * 0.16 + breathe * 0.03);
+        const pupil = ctx.createRadialGradient(cx, cy, 0, cx, cy, pupilR);
+        pupil.addColorStop(0, "rgba(255,255,245,0.98)");
+        pupil.addColorStop(0.4, `hsla(${42 + hot * 10}, 100%, 70%, 0.92)`);
+        pupil.addColorStop(1, "hsla(30, 100%, 55%, 0)");
+        ctx.fillStyle = pupil;
+        ctx.beginPath();
+        ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // --- Dormant lens: Claude isn't in the room, so no red. A deep near-black
+        // glass fill keeps the eye reading as "off but present" rather than empty. ---
+        const off = ctx.createRadialGradient(cx, cy, 0, cx, cy, lensR);
+        off.addColorStop(0, "hsla(0, 45%, 6%, 1)");
+        off.addColorStop(0.6, "hsla(0, 35%, 3.5%, 1)");
+        off.addColorStop(1, "hsla(0, 30%, 1.5%, 1)");
+        ctx.fillStyle = off;
+        ctx.beginPath();
+        ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "lighter";
+      }
 
       // --- Glassy specular highlight (fixed reflection up-left) ---
       const specR = lensR * 0.5;

@@ -1097,9 +1097,15 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
         # Connect and run
         token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         token.with_identity("voice-mode-bot").with_name("Voice Mode Bot")
+        # room_admin lets the agent override the sender_identity on the user's STT
+        # text stream. Without it the server rejects the spoof and relabels the
+        # user's transcription as "voice-mode-bot", so the frontend can't tell who
+        # spoke once the transcribed_track_id tag drops off (later turns) and the
+        # user's lines collapse to the assistant's side.
         token.with_grants(api.VideoGrants(
             room_join=True, room=room_name,
             can_publish=True, can_subscribe=True,
+            room_admin=True,
         ))
         
         room = rtc.Room()
