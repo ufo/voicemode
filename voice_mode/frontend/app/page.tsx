@@ -20,7 +20,6 @@ export default function Page() {
   // across mute/unmute. We rely on this to pre-publish a muted mic at connect (see connect())
   // so KEY XMIT captures its very first turn.
   const [room] = useState(() => new Room({ publishDefaults: { stopMicTrackOnMute: false } }));
-  const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
   const [micEnabled, setMicEnabled] = useState(false);
   // Compose (push-to-talk) mode: when true, the next turn is driven manually — the
@@ -109,9 +108,6 @@ export default function Page() {
   // press commits the whole thing for transcription. Driven over LiveKit RPC to the agent
   // participant ("voice-mode-bot"). Gated on the agent being present (disabled otherwise).
   const onCompose = useCallback(async () => {
-    // Clear any stale "Compose unavailable" from a prior press so a recovered turn
-    // doesn't keep showing the old error.
-    setError("");
     try {
       await room.startAudio();
     } catch {
@@ -148,7 +144,6 @@ export default function Page() {
       // Agent gone (e.g. turn already ended) — drop back to idle rather than wedging
       // the button in "RCV" forever, and undo any mic we opened for this turn.
       setComposing(false);
-      setError("Compose unavailable — agent not listening");
       if (!micOpenBeforeCompose.current) {
         try {
           await room.localParticipant.setMicrophoneEnabled(false);
@@ -170,9 +165,6 @@ export default function Page() {
       );
       setBotPresent(present);
       if (!present) setComposing(false);
-      // Clear a stale "Compose unavailable" once the agent is back — otherwise the
-      // error set on a press-while-absent lingers until the next reconnect.
-      if (present) setError("");
     };
     const onConnState = (state: ConnectionState) => {
       const isConnected = state === ConnectionState.Connected;
@@ -223,7 +215,6 @@ export default function Page() {
             micEnabled={micEnabled}
             composing={composing}
             botPresent={botPresent}
-            error={error}
             onComm={onComm}
             onCycle={onCycle}
             onVoiceInput={onVoiceInput}
@@ -278,7 +269,6 @@ function ButtonBar(props: {
   micEnabled: boolean;
   composing: boolean;
   botPresent: boolean;
-  error: string;
   onComm: () => void;
   onCycle: () => void;
   onVoiceInput: () => void;
@@ -341,7 +331,6 @@ function ButtonBar(props: {
           </button>
         </div>
       </div>
-      {props.error && <p className="text-red-400 text-xs">{props.error}</p>}
     </div>
   );
 }

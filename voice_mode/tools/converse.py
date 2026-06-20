@@ -1148,12 +1148,20 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
         # detection, so the user can pause mid-sentence without the VAD ending the turn;
         # the phone commits explicitly when done. update_options() switches the mode on
         # the running session — no restart needed.
+        #
+        # ptt_active is a single-element list so the wait loop can read it from its
+        # enclosing scope (Python closures can't rebind a bare bool). While True the
+        # wait loop resets start_time each tick, preventing a timeout from kicking the
+        # bot out of the room while the user is mid-sentence.
+        ptt_active = [False]
+
         @room.local_participant.register_rpc_method("ptt_start")
         async def _ptt_start(data: rtc.RpcInvocationData) -> str:
             logger.debug("RPC ptt_start: entering manual (compose) turn")
             session.update_options(turn_detection="manual")
             session.clear_user_turn()
             agent.manual_mode = True
+            ptt_active[0] = True
             return "ok"
 
         @room.local_participant.register_rpc_method("ptt_commit")
@@ -1197,6 +1205,7 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
             except Exception as e:
                 logger.debug(f"ptt_commit error: {e!r}")
             finally:
+                ptt_active[0] = False
                 session.input.set_audio_enabled(True)
             return "ok"
 
@@ -1206,6 +1215,10 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
             if agent.response:
                 await room.disconnect()
                 return agent.response
+            # While the user is mid-KEY-XMIT (ptt_start received, ptt_commit not yet
+            # sent) reset start_time so the timeout never fires during active recording.
+            if ptt_active[0]:
+                start_time = time.time()
             # COM HALT: when the phone leaves the room mid-turn the user has ended the
             # conversation. The join loop above only proceeds once a participant is present,
             # so an empty remote_participants here means the phone disconnected. Confirm it
