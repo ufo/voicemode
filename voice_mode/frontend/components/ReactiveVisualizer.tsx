@@ -7,6 +7,10 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useEffect, useRef } from "react";
+// Realistic HAL lens photo (dark glass dome + real room reflections + red glow). Lives in
+// app/eye.png; webpack rewrites the import to a served URL. Used as the lens base instead
+// of drawing reflections by hand.
+import eyeSrc from "../app/eye.png";
 
 // The agent joins the room with this identity (see livekit_converse in converse.py).
 const AGENT_IDENTITY = "voice-mode-bot";
@@ -98,6 +102,14 @@ export default function ReactiveVisualizer({
     const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
     const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+    // Load the realistic lens photo once; the draw loop blends it in as soon as it's ready.
+    const eyeImg = new Image();
+    let eyeReady = false;
+    eyeImg.onload = () => {
+      eyeReady = true;
+    };
+    eyeImg.src = eyeSrc.src;
+
     const draw = () => {
       raf = requestAnimationFrame(draw);
       t += 0.016;
@@ -148,6 +160,92 @@ export default function ReactiveVisualizer({
       ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, w, h);
 
+      // --- Grille panels flanking the eye (the HAL "audio box" speaker cover) ---
+      // A grey woven-mesh grille fills the empty black space either side of the lens. The
+      // console frame bezels its outer edge and the dividers bezel its top and bottom; the
+      // eye-facing inner edge gets its own vertical chrome bezel here, so the grille reads
+      // as fully surrounded. A black gap is left between that bezel and the eye's chrome
+      // ring so the two never touch. Square throughout — no rounded corners.
+      const drawGrille = (side: number) => {
+        const eyeBezelR = R * 1.2; // matches chromeOuter below
+        const gap = minDim * 0.05; // black gap from the eye's chrome ring
+        const bezelW = Math.max(5 * dpr, minDim * 0.03); // inner chrome bezel width
+
+        const innerX = cx + side * (eyeBezelR + gap); // edge nearest the eye
+        const outerX = side < 0 ? 0 : w; // flush to the canvas (console bezel) edge
+        const left = Math.min(innerX, outerX);
+        const right = Math.max(innerX, outerX);
+        const pw = right - left;
+        if (pw < bezelW * 2.5) return; // too narrow to read — skip
+
+        // The chrome bezel hugs the inner (eye-facing) edge; the mesh fills the rest.
+        const bezelX = side < 0 ? right - bezelW : left;
+        const meshLeft = side < 0 ? left : left + bezelW;
+        const meshRight = side < 0 ? right - bezelW : right;
+        const meshW = meshRight - meshLeft;
+
+        // --- Grey woven mesh: dark base crossed by fine horizontal AND vertical ribs ---
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(meshLeft, 0, meshW, h);
+        ctx.clip();
+        ctx.fillStyle = "#202225"; // dark groove base
+        ctx.fillRect(meshLeft, 0, meshW, h);
+        const step = Math.max(3 * dpr, minDim * 0.016);
+        const ribW = Math.max(1 * dpr, step * 0.42);
+        ctx.fillStyle = "rgba(104, 109, 114, 0.7)"; // dim rib crest — muted so it doesn't pull focus from the eye
+        for (let y = step * 0.4; y < h; y += step) {
+          ctx.fillRect(meshLeft, y, meshW, ribW); // horizontal slats
+        }
+        for (let x = meshLeft + step * 0.4; x < meshRight; x += step) {
+          ctx.fillRect(x, 0, ribW, h); // vertical ribs crossing them
+        }
+        // Convex sheen + top-down lighting so it reads as curved metal, not a flat sticker.
+        const sheen = ctx.createLinearGradient(meshLeft, 0, meshRight, 0);
+        sheen.addColorStop(0.0, "rgba(0, 0, 0, 0.3)");
+        sheen.addColorStop(0.5, "rgba(255, 255, 255, 0.06)");
+        sheen.addColorStop(1.0, "rgba(0, 0, 0, 0.3)");
+        ctx.fillStyle = sheen;
+        ctx.fillRect(meshLeft, 0, meshW, h);
+        const lit = ctx.createLinearGradient(0, 0, 0, h);
+        lit.addColorStop(0.0, "rgba(255, 255, 255, 0.1)");
+        lit.addColorStop(0.4, "rgba(0, 0, 0, 0)");
+        lit.addColorStop(1.0, "rgba(0, 0, 0, 0.3)");
+        ctx.fillStyle = lit;
+        ctx.fillRect(meshLeft, 0, meshW, h);
+        ctx.restore();
+
+        // --- Inner chrome bezel: a vertical brushed-metal rib framing the grille on the
+        // eye-facing side, the same chrome as the console frame and dividers. ---
+        const sweep = ctx.createLinearGradient(0, 0, 0, h);
+        // Dimmed gunmetal chrome (the bright palette scaled down ~55%) so the bezel
+        // recedes next to the eye's bright ring.
+        const chromeStopsV: [number, string][] = [
+          [0.0, "#878889"],
+          [0.08, "#606366"],
+          [0.2, "#25272a"],
+          [0.32, "#727476"],
+          [0.5, "#34373b"],
+          [0.62, "#18191a"],
+          [0.74, "#797b7d"],
+          [0.85, "#46494d"],
+          [0.94, "#202224"],
+          [1.0, "#878889"],
+        ];
+        for (const [p, c] of chromeStopsV) sweep.addColorStop(p, c);
+        ctx.fillStyle = sweep;
+        ctx.fillRect(bezelX, 0, bezelW, h);
+        // Round the rib across its width: subtle crown, dark grooves at both edges.
+        const crown = ctx.createLinearGradient(bezelX, 0, bezelX + bezelW, 0);
+        crown.addColorStop(0.0, "rgba(0, 0, 0, 0.4)");
+        crown.addColorStop(0.5, "rgba(255, 255, 255, 0.1)");
+        crown.addColorStop(1.0, "rgba(0, 0, 0, 0.4)");
+        ctx.fillStyle = crown;
+        ctx.fillRect(bezelX, 0, bezelW, h);
+      };
+      drawGrille(-1);
+      drawGrille(1);
+
       // --- Chrome bezel: brushed-metal ring around a dark lens housing ---
       // Dark housing rim sits just inside the chrome so there's no gap to the lens.
       const housingR = R * 1.2;
@@ -197,49 +295,61 @@ export default function ReactiveVisualizer({
 
       const hot = clamp(level, 0, 1); // how white-hot the center burns
 
-      // Everything red is clipped to the lens opening so the glow/bloom can never
-      // spill past the outer circle into the black housing.
+      // The lens opening: clip everything here so the photo + glow can't spill past the
+      // outer circle into the black housing.
       const lensR = R; // the visible outer circle
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
       ctx.clip();
 
+      // --- Realistic lens: the HAL eye photo (app/eye.png) fills the opening, giving the
+      // real glass dome + room reflections. A slight overscan makes the photo's dome reach
+      // the chrome ring instead of leaving its own dark rim inside it. ---
+      if (eyeReady) {
+        const d = lensR * 2 * 1.1;
+        ctx.drawImage(eyeImg, cx - d / 2, cy - d / 2, d, d);
+      } else {
+        // Fallback until the image loads: deep near-black glass.
+        ctx.fillStyle = "#070708";
+        ctx.beginPath();
+        ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       if (connectedRef.current) {
-        // Agent presence (gf) sets only the RESTING size — a small light between turns that
-        // eases up once the agent joins. Audio activity (act) then drives the eye out to the
-        // chrome ring REGARDLESS of presence, so speaking always inflates it. Crucially gf
-        // must NOT multiply the whole glow: doing so crushed the audio swing to ~0.34·lensR
-        // whenever the bot was away, so the eye stayed tiny no matter how loud you spoke.
-        const rest = 0.30 + 0.28 * gf; // ~0.40 (bot away) .. 0.58 (bot present), at rest
+        // While connected the eye is alive: a reactive red glow + bloom + hot pupil burn
+        // ADDITIVELY over the photo so the lens lights up and pulses with the voice. The
+        // photo's own dim red is the resting look; speech drives these brighter. Agent
+        // presence (gf) sets only the resting size; audio (act) inflates it toward the ring.
+        const rest = 0.3 + 0.28 * gf; // ~0.40 (bot away) .. 0.58 (bot present), at rest
         const reach = clamp(rest + act * 1.0, rest, 0.98); // speech pushes out to the ring
 
-        // --- The red lens glow (fades out before the clip edge) ---
+        ctx.globalCompositeOperation = "lighter";
+
+        // --- The red lens glow (additive, so the photo shows through at rest) ---
         const glowR = lensR * reach;
         const lens = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-        lens.addColorStop(0, `hsla(${20 + hot * 30}, 100%, ${72 + hot * 22}%, 1)`);
-        lens.addColorStop(0.16, `hsla(${6 + hot * 18}, 100%, ${55 + hot * 18}%, 0.98)`);
-        lens.addColorStop(0.5, `hsla(0, 100%, ${30 + hot * 12}%, 0.92)`);
-        lens.addColorStop(0.82, "hsla(0, 100%, 16%, 0.55)");
-        lens.addColorStop(1, "hsla(0, 100%, 8%, 0)");
+        lens.addColorStop(0, `hsla(${20 + hot * 30}, 100%, ${58 + hot * 28}%, 0.95)`);
+        lens.addColorStop(0.18, `hsla(${4 + hot * 16}, 100%, ${40 + hot * 20}%, 0.7)`);
+        lens.addColorStop(0.55, `hsla(0, 100%, ${22 + hot * 12}%, 0.36)`);
+        lens.addColorStop(1, "hsla(0, 100%, 10%, 0)");
         ctx.fillStyle = lens;
         ctx.beginPath();
         ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
         ctx.fill();
 
-        // --- Additive bloom, also confined within the lens ---
-        ctx.globalCompositeOperation = "lighter";
+        // --- Additive bloom ---
         const bloomR = lensR * clamp(reach - 0.05, 0.2, 0.96);
         const bloom = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, bloomR);
-        bloom.addColorStop(0, `hsla(2, 100%, 50%, ${0.18 + act * 0.4})`);
+        bloom.addColorStop(0, `hsla(2, 100%, 50%, ${0.12 + act * 0.4})`);
         bloom.addColorStop(1, "hsla(2, 100%, 50%, 0)");
         ctx.fillStyle = bloom;
         ctx.beginPath();
         ctx.arc(cx, cy, bloomR, 0, Math.PI * 2);
         ctx.fill();
 
-        // --- The pupil: a bright hot core that pulses with the low end (not gf-gated, so it
-        // reacts to your voice whether or not the agent is in the room) ---
+        // --- The pupil: a bright hot core that pulses with the low end ---
         const pupilR = lensR * (0.09 + bassS * 0.26 + breathe * 0.03);
         const pupil = ctx.createRadialGradient(cx, cy, 0, cx, cy, pupilR);
         pupil.addColorStop(0, "rgba(255,255,245,0.98)");
@@ -250,30 +360,13 @@ export default function ReactiveVisualizer({
         ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        // --- Dormant lens: the phone isn't in the room, so no red. A deep near-black
-        // glass fill keeps the eye reading as "off but present" rather than empty. ---
-        const off = ctx.createRadialGradient(cx, cy, 0, cx, cy, lensR);
-        off.addColorStop(0, "hsla(0, 45%, 6%, 1)");
-        off.addColorStop(0.6, "hsla(0, 35%, 3.5%, 1)");
-        off.addColorStop(1, "hsla(0, 30%, 1.5%, 1)");
-        ctx.fillStyle = off;
+        // Dormant: the phone isn't in the room. Dim the photo so the eye reads "resting"
+        // (its baked-in red muted) until the agent joins and the glow above lights it up.
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
         ctx.beginPath();
         ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalCompositeOperation = "lighter";
       }
-
-      // --- Glassy specular highlight (fixed reflection up-left) ---
-      const specR = lensR * 0.5;
-      const sx = cx - lensR * 0.32;
-      const sy = cy - lensR * 0.34;
-      const spec = ctx.createRadialGradient(sx, sy, 0, sx, sy, specR);
-      spec.addColorStop(0, "rgba(255,255,255,0.16)");
-      spec.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = spec;
-      ctx.beginPath();
-      ctx.arc(sx, sy, specR, 0, Math.PI * 2);
-      ctx.fill();
 
       ctx.globalCompositeOperation = "source-over";
       ctx.restore();
@@ -290,7 +383,7 @@ export default function ReactiveVisualizer({
   return (
     <canvas
       ref={canvasRef}
-      className="h-full w-full rounded-2xl"
+      className="h-full w-full"
       style={{ background: "#000000" }}
     />
   );

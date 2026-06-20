@@ -452,15 +452,15 @@ button.hal-btn--active {
    sections fall back to the dark housing, reading as one console body. */
 .hal-console {
   position: relative;
-  padding: 14px;
+  padding: 8px;
   border-radius: 22px;
   /* Dark housing behind the bezel — same near-black lens body as the eye. */
   background: radial-gradient(125% 125% at 50% 0%, #15161a 0%, #0a0b0e 62%, #050507 100%);
   box-shadow:
     0 10px 40px rgba(0, 0, 0, 0.6),
     0 2px 6px rgba(0, 0, 0, 0.5),
-    /* bright outer rim + seating line, like the eye's outer chrome edge */
-    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    /* outer rim + seating line — dimmed so it doesn't compete with the eye */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.26);
 }
 
 /* The chrome ring itself: the eye's conic gradient (bright near top & bottom,
@@ -472,19 +472,21 @@ button.hal-btn--active {
   inset: 0;
   z-index: 1;
   border-radius: inherit;
-  padding: 14px; /* must match .hal-console padding — defines the ring width */
+  padding: 8px; /* must match .hal-console padding — defines the ring width */
+  /* Dimmed gunmetal (bright chrome scaled down ~55%) so the frame recedes and the
+     eye's still-bright ring stays the focal point. */
   background: conic-gradient(
     from -90deg,
-    #f6f8fa 0%,
-    #aeb4ba 8%,
-    #43474c 20%,
-    #cfd3d7 32%,
-    #5f656b 50%,
-    #2b2d30 62%,
-    #dce0e3 74%,
-    #80868c 85%,
-    #3a3d41 94%,
-    #f6f8fa 100%
+    #878889 0%,
+    #606366 8%,
+    #25272a 20%,
+    #727476 32%,
+    #34373b 50%,
+    #18191a 62%,
+    #797b7d 74%,
+    #46494d 85%,
+    #202224 94%,
+    #878889 100%
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -499,9 +501,9 @@ button.hal-btn--active {
 .hal-console::after {
   content: "";
   position: absolute;
-  inset: 13px;
+  inset: 7px;
   z-index: 1;
-  border-radius: 9px;
+  border-radius: 14px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
   pointer-events: none;
 }
@@ -514,31 +516,32 @@ button.hal-btn--active {
    and dark bottom groove, matching the bezel's outer-rim/inner-groove edges. */
 .hal-divider {
   flex: 0 0 auto;
-  height: 12px;
+  height: 7px;
   border-radius: 0;
+  /* Dimmed gunmetal to match the console frame — muted so the eye keeps focus. */
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.5) 0%,
-      rgba(255, 255, 255, 0.12) 18%,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.06) 18%,
       rgba(0, 0, 0, 0) 46%,
       rgba(0, 0, 0, 0.38) 100%
     ),
     linear-gradient(
       90deg,
-      #f6f8fa 0%,
-      #aeb4ba 8%,
-      #43474c 20%,
-      #cfd3d7 32%,
-      #5f656b 50%,
-      #2b2d30 62%,
-      #dce0e3 74%,
-      #80868c 85%,
-      #3a3d41 94%,
-      #f6f8fa 100%
+      #878889 0%,
+      #606366 8%,
+      #25272a 20%,
+      #727476 32%,
+      #34373b 50%,
+      #18191a 62%,
+      #797b7d 74%,
+      #46494d 85%,
+      #202224 94%,
+      #878889 100%
     );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 -1px 0 rgba(0, 0, 0, 0.5),
     0 1px 2px rgba(0, 0, 0, 0.5);
 }
