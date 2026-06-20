@@ -7,11 +7,19 @@ interface GhostTextProps {
   // Characters revealed per tick and the tick interval (ms).
   charsPerTick?: number;
   tickMs?: number;
+  // Keep the blinking caret after the last word even once typing has finished. Set on the
+  // last transcript segment so the console always shows a resting cursor after the text.
+  showCaret?: boolean;
 }
 
 // Typewriter ("ghost typing") reveal. The displayed length walks toward text.length;
 // when the segment grows (streaming transcription), the effect re-runs and keeps typing.
-export default function GhostText({ text, charsPerTick = 1, tickMs = 22 }: GhostTextProps) {
+export default function GhostText({
+  text,
+  charsPerTick = 1,
+  tickMs = 22,
+  showCaret = false,
+}: GhostTextProps) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -31,7 +39,7 @@ export default function GhostText({ text, charsPerTick = 1, tickMs = 22 }: Ghost
   return (
     <span className="font-ghost">
       {text.slice(0, count)}
-      {typing && <span className="ghost-caret" aria-hidden="true" />}
+      {(typing || showCaret) && <span className="ghost-caret" aria-hidden="true" />}
     </span>
   );
 }

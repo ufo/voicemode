@@ -112,17 +112,24 @@ export default function Page() {
     }
     try {
       if (!composing) {
-        // Compose needs the mic publishing to capture the spoken turn. Remember whether
-        // it was already open (AUTO XMIT) so commit can restore that exact state.
+        // Remember whether the mic was already open (AUTO XMIT) so commit can restore
+        // that exact state.
         micOpenBeforeCompose.current = room.localParticipant.isMicrophoneEnabled;
-        if (!room.localParticipant.isMicrophoneEnabled) {
-          await room.localParticipant.setMicrophoneEnabled(true);
-        }
+        // Send ptt_start FIRST and only open the mic / light KEY XMIT once it lands. If
+        // botPresent is stale (the agent left the room after its last turn) this RPC
+        // throws — handled below by correcting botPresent rather than flashing the mic.
+        // Doing the mic-enable before the RPC was the "AUTO XMIT blinks, KEY XMIT never
+        // lights" bug: the mic toggle fired, then the RPC threw and the catch reverted it.
         await room.localParticipant.performRpc({
           destinationIdentity: "voice-mode-bot",
           method: "ptt_start",
           payload: "",
         });
+        // RPC landed — the agent is really listening. Now open the mic to capture the
+        // composed turn and flip into composing so KEY XMIT lights.
+        if (!room.localParticipant.isMicrophoneEnabled) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+        }
         setComposing(true);
       } else {
         await room.localParticipant.performRpc({
@@ -138,8 +145,10 @@ export default function Page() {
         }
       }
     } catch (e) {
-      // Agent gone (e.g. turn already ended) — drop back to idle rather than wedging
-      // the button in "RCV" forever, and undo any mic we opened for this turn.
+      // The RPC failed — the agent isn't reachable (it left the room after its last
+      // turn, so botPresent was stale). Correct botPresent so KEY XMIT greys out instead
+      // of inviting another dead press, drop back to idle, and undo any mic we opened.
+      setBotPresent(false);
       setComposing(false);
       if (!micOpenBeforeCompose.current) {
         try {
@@ -218,7 +227,7 @@ export default function Page() {
             onCompose={onCompose}
           />
           <div className="hal-divider" />
-          <TranscriptionView />
+          <TranscriptionView connected={connected} />
           <RoomAudioRenderer />
           <AgentStatus />
         </div>
