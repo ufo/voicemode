@@ -172,3 +172,46 @@ VoiceMode maintains comprehensive logs in the `~/.voicemode/` directory:
 - **Event Logs** (`logs/events/`): Detailed operational events including TTS/STT operations, errors, and provider selection
 - **Audio Recordings** (`audio/`): Saved TTS outputs and STT inputs for debugging and review
 - **Debug Logs** (`logs/debug/`): Verbose debugging information when running with `--debug` flag
+
+## Local LiveKit + Android Phone Voice (this worktree)
+
+This worktree is intentionally pinned at **v7.4.2** — the last release with the local-LiveKit
+transport (`converse(transport="livekit")`). VoiceMode removed all LiveKit support in 8.0.0, so this
+branch (`livekit-frontend`) keeps a working self-hosted path: an Android Chrome phone joins a
+self-hosted LiveKit room over WLAN, and the `voicemode-livekit` MCP server's `converse` joins the
+same room as the agent participant `voice-mode-bot` (STT/TTS via the local speaches endpoint).
+
+### Hard-won gotchas (don't re-debug these)
+
+- **Mobile Chrome won't play remote audio until `room.startAudio()` runs inside a user gesture.**
+  The bot joins *per turn*, so its TTS track always arrives *after* the phone connects — and Chrome
+  keeps it muted under the autoplay policy. The fix (`app/page.tsx`) calls `room.startAudio()` in the
+  "Voice Input" click handler so playback is armed for whatever tracks show up later. Symptom when
+  missing: STT works (local mic needs no unlock) but the phone is silent. A page reload re-locks it.
+
+- **The bot's LiveKit token needs `room_admin` for user-STT speaker attribution.** The agent stamps
+  the user's transcription text stream with `sender_identity=<user>`, but the server only honors that
+  override for a room admin. Without it, the user's transcript is relabeled `voice-mode-bot` and the
+  frontend can't tell who spoke (it then collapses user lines onto the assistant's side, especially
+  once the `lk.transcribed_track_id` tag drops off on later turns). Grant is set in
+  `voice_mode/tools/converse.py` where the bot's `api.VideoGrants(...)` are built.
+
+- **Transcript speaker classification** (`hooks/useCombinedTranscriptions.ts`) keys off
+  `lk.transcribed_track_id` + local-track ownership, *not* participant identity — because identity
+  alone is unreliable (see the `room_admin` point above). User mic track = local → right-aligned;
+  everything else → assistant → left.
+
+- **The red HAL eye** (`components/ReactiveVisualizer.tsx`) is gated on a remote participant
+  (`voice-mode-bot`) being present, so it only burns red while the agent is in the room and sits
+  dormant (dark glass) between turns.
+
+### Edit → see-it workflow
+
+- **Frontend changes** (`voice_mode/frontend/`) need a rebuild + server restart + phone reload:
+  `npm run build`, then restart `next start -H 0.0.0.0 -p 3000`, then reload the page on the phone.
+  `next start` serves the prebuilt `.next`, so it will *not* pick up changes without the rebuild.
+- **`converse.py` / Python changes** need the **MCP server reconnected** (`/mcp` →
+  `voicemode-livekit` → Reconnect) — the editable install only reloads on process restart.
+- The controlled chrome-devtools Chrome runs with `prefers-reduced-motion: reduce`, so every CSS
+  animation (scan band, LED pulse, text flicker, caret blink) is invisible there but live on the
+  phone. Static styling previews fine; motion does not.

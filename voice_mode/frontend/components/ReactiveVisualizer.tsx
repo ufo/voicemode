@@ -18,6 +18,10 @@ interface ReactiveVisualizerProps {
   // Kept for API compatibility; the track is now sourced from useTracks below.
   trackRef?: TrackArg;
   state?: string;
+  // Whether the phone is in the LiveKit room. The eye burns red the whole time you're in
+  // the room (small when HAL is away, full-size once the agent joins); when not connected
+  // it falls back to the dormant dark lens.
+  connected?: boolean;
 }
 
 // IMPORTANT: useMultibandTrackVolume slices the FFT bins with `opts.loPass`/`opts.hiPass`
@@ -29,7 +33,10 @@ const VOLUME_OPTS = { bands: 64, loPass: 1, hiPass: 256 } as const;
 
 const BANDS = 64;
 
-export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveVisualizerProps) {
+export default function ReactiveVisualizer({
+  state = "disconnected",
+  connected = false,
+}: ReactiveVisualizerProps) {
   // Both the local microphone AND the agent's TTS are published as microphone-source
   // tracks, so useTracks surfaces them together and updates on (un)subscribe. We do NOT
   // rely on useVoiceAssistant().audioTrack, which only works if the agent participant is
@@ -58,6 +65,11 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
   const presentRef = useRef(botPresent);
   presentRef.current = botPresent;
 
+  // Mirror room-connection state into a ref the rAF loop reads. The eye glows red the
+  // whole time we're connected, not only while the bot is mid-turn.
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -81,6 +93,7 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
     let bassS = 0; // smoothed bass
     let t = 0;
     let raf = 0;
+    let gf = 0.35; // smoothed red-glow size factor (small light when HAL is away, fills lens when present)
 
     const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
     const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -117,7 +130,12 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
       const breathe = (Math.sin(t * 1.1) * 0.5 + 0.5) * (st === "thinking" ? 0.18 : 0.08);
       const act = clamp(level + breathe * 0.4, 0, 1); // overall activity
 
-      const R = minDim * 0.38; // lens outer radius
+      const R = minDim * 0.38; // lens outer radius — the lens + chrome bezel stay full size
+
+      // The red glow in the centre is just a small light when HAL isn't in the room and
+      // grows to fill the lens once the agent joins. Lerp so it eases between the two.
+      const gfTarget = presentRef.current ? 1.0 : 0.35;
+      gf = lerp(gf, gfTarget, 0.08);
 
       // --- Solid black backdrop (a lens reads wrong with motion trails) ---
       ctx.globalCompositeOperation = "source-over";
@@ -181,9 +199,9 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
       ctx.arc(cx, cy, lensR, 0, Math.PI * 2);
       ctx.clip();
 
-      if (presentRef.current) {
+      if (connectedRef.current) {
         // --- The red lens glow (fades out before the clip edge) ---
-        const glowR = lensR * (0.82 + act * 0.16);
+        const glowR = lensR * (0.82 + act * 0.16) * gf;
         const lens = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
         lens.addColorStop(0, `hsla(${20 + hot * 30}, 100%, ${72 + hot * 22}%, 1)`);
         lens.addColorStop(0.16, `hsla(${6 + hot * 18}, 100%, ${55 + hot * 18}%, 0.98)`);
@@ -197,7 +215,7 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
 
         // --- Additive bloom, also confined within the lens ---
         ctx.globalCompositeOperation = "lighter";
-        const bloomR = lensR * (0.75 + act * 0.22);
+        const bloomR = lensR * (0.75 + act * 0.22) * gf;
         const bloom = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, bloomR);
         bloom.addColorStop(0, `hsla(2, 100%, 50%, ${0.18 + act * 0.4})`);
         bloom.addColorStop(1, "hsla(2, 100%, 50%, 0)");
@@ -207,7 +225,7 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
         ctx.fill();
 
         // --- The pupil: a bright hot core that pulses with the low end ---
-        const pupilR = lensR * (0.11 + bassS * 0.16 + breathe * 0.03);
+        const pupilR = lensR * (0.11 + bassS * 0.16 + breathe * 0.03) * gf;
         const pupil = ctx.createRadialGradient(cx, cy, 0, cx, cy, pupilR);
         pupil.addColorStop(0, "rgba(255,255,245,0.98)");
         pupil.addColorStop(0.4, `hsla(${42 + hot * 10}, 100%, 70%, 0.92)`);
@@ -217,7 +235,7 @@ export default function ReactiveVisualizer({ state = "disconnected" }: ReactiveV
         ctx.arc(cx, cy, pupilR, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        // --- Dormant lens: Claude isn't in the room, so no red. A deep near-black
+        // --- Dormant lens: the phone isn't in the room, so no red. A deep near-black
         // glass fill keeps the eye reading as "off but present" rather than empty. ---
         const off = ctx.createRadialGradient(cx, cy, 0, cx, cy, lensR);
         off.addColorStop(0, "hsla(0, 45%, 6%, 1)");

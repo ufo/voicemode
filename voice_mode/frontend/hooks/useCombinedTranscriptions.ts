@@ -7,7 +7,14 @@ const AGENT_IDENTITY = "voice-mode-bot";
 // livekit-agents tags each transcription stream with the sid of the track it transcribes.
 const TRANSCRIBED_TRACK_ID = "lk.transcribed_track_id";
 
-export default function useCombinedTranscriptions() {
+export type CombinedTranscription = {
+  id: string;
+  text: string;
+  role: "user" | "assistant";
+  firstReceivedTime: number;
+};
+
+export default function useCombinedTranscriptions(): CombinedTranscription[] {
   // livekit-agents 1.x publishes transcription over text streams (topic "lk.transcription"),
   // NOT the legacy per-track TranscriptionReceived events that useTrackTranscription listens
   // for. useTranscriptions reads those text streams, so it captures both the agent's spoken
@@ -17,23 +24,29 @@ export default function useCombinedTranscriptions() {
 
   const combinedTranscriptions = useMemo(() => {
     // Track sids published by the local (browser/phone) participant — i.e. our mic.
-    // The agent forwards the user's STT under sender_identity=<user>, but the server only
-    // honours that spoof if the bot's token grants it; otherwise BOTH streams arrive tagged
-    // as "voice-mode-bot" and identity alone can't tell speaker apart. The transcribed track,
-    // however, is unambiguous: the user's mic track is local, the agent's audio track is remote.
     const localTrackSids = new Set(localParticipant.trackPublications.keys());
 
     return transcriptions
       .map((t) => {
         const trackSid = t.streamInfo.attributes?.[TRANSCRIBED_TRACK_ID];
-        // Prefer track ownership; fall back to identity when no track sid is attached.
-        const isUser = trackSid
-          ? localTrackSids.has(trackSid)
-          : t.participantInfo.identity !== AGENT_IDENTITY;
+        const identity = t.participantInfo.identity;
+        const localMatch = !!trackSid && localTrackSids.has(trackSid);
+
+        // Classify the agent's OWN speech as narrowly as possible, treating everything
+        // else as the user. The agent's TTS transcripts arrive tagged as "voice-mode-bot"
+        // WITH a transcribed_track_id for its (remote) audio track. The user's turns are
+        // either tagged with our local mic track (VAD), or — for a composed KEY XMIT turn —
+        // arrive with NO track id and the identity spoof collapsed back to "voice-mode-bot"
+        // (so the old `identity !== AGENT` test wrongly filed them under the assistant and
+        // left-aligned them). Requiring BOTH the agent identity AND a non-local track id to
+        // call something the assistant keeps composed turns on the user's side.
+        const isAgentOwn = identity === AGENT_IDENTITY && !!trackSid && !localMatch;
+        const isUser = !isAgentOwn;
+
         return {
           id: t.streamInfo.id,
           text: t.text,
-          role: isUser ? "user" : "assistant",
+          role: (isUser ? "user" : "assistant") as "user" | "assistant",
           firstReceivedTime: t.streamInfo.timestamp,
         };
       })

@@ -1044,6 +1044,10 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
                 self.has_spoken = False
                 self.speech_start_time = None
                 self.min_speech_duration = 3.0  # Minimum 3 seconds of speech
+                # Push-to-talk / compose mode: when True the phone drives turn
+                # boundaries via RPC (ptt_start/ptt_commit) instead of VAD, so the
+                # min-speech-duration floor must not silently eat a short composed reply.
+                self.manual_mode = False
             
             async def on_enter(self):
                 await asyncio.sleep(0.5)
@@ -1060,8 +1064,10 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
                 if self.has_spoken and not self.response and new_message.content:
                     content = new_message.content[0]
                     
-                    # Check if speech duration was long enough
-                    if self.speech_start_time:
+                    # Check if speech duration was long enough. Skipped in manual
+                    # (compose) mode: there the user explicitly committed the turn, so
+                    # a short reply is intentional, not a VAD misfire.
+                    if self.speech_start_time and not self.manual_mode:
                         speech_duration = time.time() - self.speech_start_time
                         if speech_duration < self.min_speech_duration:
                             logger.debug(f"Speech too short ({speech_duration:.1f}s < {self.min_speech_duration}s), ignoring")
@@ -1135,15 +1141,84 @@ async def livekit_converse(message: str, room_name: str = "", timeout: float = 6
         )
         session = AgentSession(vad=vad)
         await session.start(room=room, agent=agent)
-        
+
+        # Push-to-talk / "compose" mode (frontend calls these via LiveKit RPC).
+        # The agent starts each turn in VAD mode (auto-commit after silence). When the
+        # phone enters compose mode it flips this single live turn to manual turn
+        # detection, so the user can pause mid-sentence without the VAD ending the turn;
+        # the phone commits explicitly when done. update_options() switches the mode on
+        # the running session — no restart needed.
+        @room.local_participant.register_rpc_method("ptt_start")
+        async def _ptt_start(data: rtc.RpcInvocationData) -> str:
+            logger.debug("RPC ptt_start: entering manual (compose) turn")
+            session.update_options(turn_detection="manual")
+            session.clear_user_turn()
+            agent.manual_mode = True
+            return "ok"
+
+        @room.local_participant.register_rpc_method("ptt_commit")
+        async def _ptt_commit(data: rtc.RpcInvocationData) -> str:
+            logger.debug("RPC ptt_commit: committing composed turn")
+            # Commit and AWAIT the transcript future directly, and use it as the
+            # authoritative result for compose turns. We do NOT rely solely on
+            # on_user_turn_completed: its VAD-oriented filters can drop a valid composed
+            # reply, and on the very first turn a cold STT stream may finalize after that
+            # path has moved on. A generous transcript_timeout covers the cold-start, and
+            # pushing the result straight into agent.response makes compose reliable from
+            # the first press (the bug where KEY XMIT only worked after priming AUTO XMIT).
+            #
+            # ROOT CAUSE of that bug (confirmed via instrumentation during debugging): Whisper is a
+            # non-streaming STT, so livekit-agents segments speech with the silero VAD and
+            # only flushes a chunk to Whisper on end-of-speech. commit_user_turn's intended
+            # push-to-talk flush — injecting `stt_flush_duration` of silence to force that
+            # finalization — only runs when the agent's audio input is DETACHED
+            # (audio_detached = not input.audio_enabled). We keep the mic attached through
+            # commit, so the flush was skipped and we relied on the VAD naturally firing
+            # end-of-speech. On a warmed pipeline it does; on the cold first turn it does
+            # not, so the turn finalized nothing and returned ''. Detaching the input here
+            # takes the silence-flush path deterministically. on_detached only stops
+            # forwarding NEW frames — the user's already-buffered speech survives to be
+            # transcribed — and we re-attach in finally so a later AUTO XMIT turn still works.
+            try:
+                session.input.set_audio_enabled(False)
+                # transcript_timeout is the window commit_user_turn holds the turn open
+                # waiting for the STT final after the silence-flush. Whisper is batch, and a
+                # COLD first turn of a fresh session can take >6s to return its first
+                # inference. The library ignores any final that lands after the turn is
+                # committed (audio_recognition._on_stt_event), so if the window closes early
+                # the transcript is dropped on the floor — it still publishes to the console
+                # (right-aligned) but never reaches agent.response ("text shows but isn't
+                # sent"). 12s covers the cold-inference latency; the outer wait_for must
+                # exceed it.
+                fut = session.commit_user_turn(transcript_timeout=12.0, stt_flush_duration=2.0)
+                transcript = await asyncio.wait_for(fut, timeout=16.0)
+                if transcript and transcript.strip() and not agent.response:
+                    agent.response = transcript.strip()
+            except Exception as e:
+                logger.debug(f"ptt_commit error: {e!r}")
+            finally:
+                session.input.set_audio_enabled(True)
+            return "ok"
+
         # Wait for response
         start_time = time.time()
         while time.time() - start_time < timeout:
             if agent.response:
                 await room.disconnect()
                 return agent.response
+            # COM HALT: when the phone leaves the room mid-turn the user has ended the
+            # conversation. The join loop above only proceeds once a participant is present,
+            # so an empty remote_participants here means the phone disconnected. Confirm it
+            # persists for a beat (so a transient ICE blip during a reconnect doesn't trip
+            # it) and then return promptly instead of blocking out the full timeout.
+            if not room.remote_participants:
+                await asyncio.sleep(0.5)
+                if not room.remote_participants:
+                    logger.debug("wait loop: phone left room (COM HALT) — ending turn")
+                    await room.disconnect()
+                    return "[Voice session ended by user — COM HALT]"
             await asyncio.sleep(0.1)
-        
+
         await room.disconnect()
         return f"No response within {timeout}s"
         

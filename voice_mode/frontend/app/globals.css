@@ -120,10 +120,13 @@
 button.hal-btn {
   font-family: var(--font-retro-mono), ui-monospace, "Courier New", monospace;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.85rem;
+  /* Tight tracking + modest horizontal padding so the longest labels
+     ("COM RESET" / "KEY XMIT") fit inside the equal-width flex columns on
+     narrow phones (~320-360px) without overflowing onto the border. */
+  letter-spacing: 0.07em;
+  font-size: 0.72rem;
   color: #0a3346;
-  padding: 0.7rem 1rem;
+  padding: 0.7rem 0.4rem;
   border-radius: 5px;
   border: 1px solid rgba(90, 160, 235, 0.6);
   background: linear-gradient(180deg, #4d79b3 0%, #2c5187 100%);
@@ -138,13 +141,33 @@ button.hal-btn {
   cursor: pointer;
 }
 
-.hal-btn:hover {
-  color: #061018;
-  border-color: rgba(120, 185, 250, 0.85);
-  background: linear-gradient(180deg, #5d89c2 0%, #3a619a 100%);
+/* Each key sits in a dark recessed socket, like the HAL 9000 console — a dark
+   square frame around every glowing button. The socket carries the flex sizing;
+   the button fills it (w-full). */
+.hal-key {
+  display: flex;
+  padding: 5px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #0c2336 0%, #07151f 100%);
   box-shadow:
-    0 0 20px rgba(110, 185, 250, 0.8),
-    inset 0 0 12px rgba(90, 160, 235, 0.5);
+    inset 0 0 0 1px rgba(60, 125, 195, 0.4),
+    inset 0 0 11px rgba(45, 100, 165, 0.35),
+    inset 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+
+/* Hover styles ONLY on devices with a real pointer. On touch screens :hover latches after
+   a tap (until you touch something else), which left the XMIT buttons stuck on their blue
+   hover look instead of flipping to the red transmitting state. Gating hover behind
+   (hover: hover) means a phone tap goes straight to the active state with no stuck hover. */
+@media (hover: hover) {
+  .hal-btn:hover {
+    color: #061018;
+    border-color: rgba(120, 185, 250, 0.85);
+    background: linear-gradient(180deg, #5d89c2 0%, #3a619a 100%);
+    box-shadow:
+      0 0 20px rgba(110, 185, 250, 0.8),
+      inset 0 0 12px rgba(90, 160, 235, 0.5);
+  }
 }
 
 .hal-btn:active {
@@ -153,15 +176,64 @@ button.hal-btn {
     inset 0 0 18px rgba(20, 55, 100, 0.8);
 }
 
-/* VOICE INPUT while live (connected + mic open): burns amber-red like the eye. */
-.hal-btn--active {
-  color: #ffd8c2;
-  border-color: rgba(255, 120, 80, 0.8);
-  background: linear-gradient(180deg, #3a140c 0%, #1c0805 100%);
-  text-shadow: 0 0 8px rgba(255, 150, 110, 0.7);
+/* VOX XMIT / KEY XMIT — the two transmit controls sit brighter than COM RESET
+   so the talk buttons read as primary. Selectors are `button.hal-btn--*` (not
+   bare `.hal-btn--*`) so they match the specificity of the `button.hal-btn` base
+   and win on source order — otherwise the base background overrides them at rest
+   and the brightness only shows on hover. Defined before --active so the amber
+   live/compose state still overrides when present. */
+button.hal-btn--bright {
+  color: #04222f;
+  border-color: rgba(190, 228, 255, 1);
+  background: linear-gradient(180deg, #9ec9f6 0%, #6b97d4 100%);
   box-shadow:
-    0 0 16px rgba(255, 90, 50, 0.55),
-    inset 0 0 12px rgba(170, 50, 25, 0.6);
+    0 0 24px rgba(150, 210, 255, 0.9),
+    inset 0 0 14px rgba(165, 212, 252, 0.75);
+}
+
+@media (hover: hover) {
+  /* :not(.hal-btn--active) so hovering a live (transmitting) button never overrides its
+     red state — bright:hover would otherwise out-specify the --active rule. */
+  button.hal-btn--bright:hover:not(.hal-btn--active) {
+    color: #061018;
+    border-color: rgba(210, 238, 255, 1);
+    background: linear-gradient(180deg, #b0d4f9 0%, #7aa4dd 100%);
+    box-shadow:
+      0 0 30px rgba(175, 224, 255, 1),
+      inset 0 0 15px rgba(180, 220, 253, 0.78);
+  }
+}
+
+/* Disabled transmit buttons. KEY XMIT is disabled whenever the agent isn't in the
+   room listening (and AUTO XMIT until connected); the browser's default greying of a
+   disabled <button> dropped the bright face down to COM RESET's dim blue. Re-assert the
+   bright look (and kill the opacity fade) so the transmit pair always reads as primary —
+   it just loses the pointer/hover affordance. */
+button.hal-btn:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+button.hal-btn--bright:disabled {
+  color: #04222f;
+  border-color: rgba(190, 228, 255, 1);
+  background: linear-gradient(180deg, #9ec9f6 0%, #6b97d4 100%);
+  box-shadow:
+    0 0 24px rgba(150, 210, 255, 0.9),
+    inset 0 0 14px rgba(165, 212, 252, 0.75);
+}
+
+/* XMIT buttons while transmitting (VOX live / KEY recording): a solid, brightly glowing
+   red-orange face like the HAL eye lit up — the pressed state has to read at a glance, so
+   it's a bright orange fill (not the old dark ember) with a hot halo and a steady pulse. */
+button.hal-btn--active {
+  color: #2a0500;
+  border-color: rgba(255, 150, 110, 1);
+  background: linear-gradient(180deg, #ff4524 0%, #c81607 100%);
+  text-shadow: 0 1px 0 rgba(255, 188, 150, 0.5);
+  box-shadow:
+    0 0 30px rgba(255, 65, 35, 0.95),
+    inset 0 0 16px rgba(255, 110, 70, 0.7);
   animation: hal-pulse 1.6s ease-in-out infinite;
 }
 
@@ -169,13 +241,13 @@ button.hal-btn {
   0%,
   100% {
     box-shadow:
-      0 0 14px rgba(255, 90, 50, 0.5),
-      inset 0 0 12px rgba(170, 50, 25, 0.55);
+      0 0 26px rgba(255, 65, 35, 0.85),
+      inset 0 0 16px rgba(255, 100, 60, 0.7);
   }
   50% {
     box-shadow:
-      0 0 22px rgba(255, 110, 70, 0.8),
-      inset 0 0 16px rgba(200, 60, 30, 0.75);
+      0 0 40px rgba(255, 90, 50, 1),
+      inset 0 0 22px rgba(255, 120, 75, 0.9);
   }
 }
 
