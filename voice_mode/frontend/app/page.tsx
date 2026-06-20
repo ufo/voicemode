@@ -14,6 +14,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { useKeepAwake } from "@/hooks/useKeepAwake";
 
+// Phone access key. Seeded ONCE by visiting a bookmarked URL like `?key=<KEY>`: we read the
+// param, persist it to localStorage, and strip it from the URL (so it never lingers in history
+// or server logs). On every later load the stored key is returned and sent as the x-access-key
+// header on the token fetch — no typing. Returns null when no key has ever been seeded (the
+// open-WLAN default, where the server-side gate is also off).
+function getAccessKey(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("key");
+    if (fromUrl) {
+      window.localStorage.setItem("vm_access_key", fromUrl);
+      params.delete("key");
+      const query = params.toString();
+      const clean = window.location.pathname + (query ? `?${query}` : "") + window.location.hash;
+      window.history.replaceState(null, "", clean);
+    }
+    return window.localStorage.getItem("vm_access_key");
+  } catch {
+    return null;
+  }
+}
+
 export default function Page() {
   // stopMicTrackOnMute:false (the default, set explicitly here) — muting the mic keeps the
   // track PUBLISHED (just disabled) rather than stopping it, so the agent stays subscribed
@@ -35,6 +58,12 @@ export default function Page() {
   // screen turning off (Android Chrome otherwise freezes the backgrounded tab).
   useKeepAwake(connected);
 
+  // Seed the access key on first load: if the page was opened from a bookmarked `?key=<KEY>`
+  // URL, persist it and strip the param immediately (don't wait for COM LINK).
+  useEffect(() => {
+    getAccessKey();
+  }, []);
+
   const connect = useCallback(async () => {
     // Generate room connection details (room name, participant name, access token, and
     // the LiveKit server URL) then join the room and pre-publish the mic MUTED. Publishing
@@ -48,8 +77,12 @@ export default function Page() {
       window.location.origin
     );
 
-    const response = await fetch(url.toString());
+    const accessKey = getAccessKey();
+    const response = await fetch(url.toString(), {
+      headers: accessKey ? { "x-access-key": accessKey } : {},
+    });
     if (!response.ok) {
+      // A 401 here means the phone hasn't been seeded with a valid key — connect aborts.
       return;
     }
 

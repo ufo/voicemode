@@ -7,6 +7,10 @@ const API_SECRET = process.env.LIVEKIT_API_SECRET || "secret";
 // Returned to the browser as serverUrl; must be reachable from the phone over WLAN.
 // Set LIVEKIT_URL in .env.local, e.g. ws://YOUR_LAN_IP:7880
 const LIVEKIT_URL = process.env.LIVEKIT_URL;
+// Optional phone access key. When set, the client must present a matching x-access-key header
+// (seeded once via a bookmarked ?key=... URL, then remembered in the phone's localStorage).
+// When unset/empty the endpoint stays open on the local WLAN — the default, unchanged behaviour.
+const ACCESS_KEY = process.env.LIVEKIT_ACCESS_KEY || "";
 
 // don't cache the results
 export const revalidate = 0;
@@ -18,9 +22,14 @@ export type ConnectionDetails = {
   participantToken: string;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Password protection removed: open access on the local WLAN.
+    // Phone access gate: when LIVEKIT_ACCESS_KEY is set, the client must send a matching
+    // x-access-key header. Unset = open access on the local WLAN (unchanged default).
+    if (ACCESS_KEY && request.headers.get("x-access-key") !== ACCESS_KEY) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
     // These checks are now optional since we have defaults
     // but we can still validate they're not empty strings
     if (!LIVEKIT_URL) {
