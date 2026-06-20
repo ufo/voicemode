@@ -1,5 +1,5 @@
 import { useLocalParticipant, useTranscriptions } from "@livekit/components-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 // The agent joins the LiveKit room with this identity (see livekit_converse in converse.py).
 const AGENT_IDENTITY = "voice-mode-bot";
@@ -22,9 +22,22 @@ export default function useCombinedTranscriptions(): CombinedTranscription[] {
   const transcriptions = useTranscriptions();
   const { localParticipant } = useLocalParticipant();
 
+  // Every track sid the local participant has EVER published. We must NOT key off a live
+  // snapshot of localParticipant.trackPublications: on the phone the mic track churns
+  // (screen off/on via keep-awake, backgrounding, network changes republish it with a new
+  // sid), so a transcript tagged with an earlier mic sid no longer matches the current
+  // publications. Because the user's STT arrives under the agent identity (room_admin
+  // attribution) WITH that stale track id, the snapshot test then mis-files the user's own
+  // turn as the assistant and left-aligns it. Accumulating sids makes the match churn-proof:
+  // a sid that was local once stays local. The agent's TTS track is published by the remote
+  // participant, so it never lands in this set — agent speech is still classified correctly.
+  const seenLocalSids = useRef<Set<string>>(new Set());
+  Array.from(localParticipant.trackPublications.keys()).forEach((sid) =>
+    seenLocalSids.current.add(sid)
+  );
+
   const combinedTranscriptions = useMemo(() => {
-    // Track sids published by the local (browser/phone) participant — i.e. our mic.
-    const localTrackSids = new Set(localParticipant.trackPublications.keys());
+    const localTrackSids = seenLocalSids.current;
 
     return transcriptions
       .map((t) => {
