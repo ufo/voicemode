@@ -43,8 +43,6 @@ export default function Page() {
     // resting (isMicrophoneEnabled=false) and no audio leaves the device until you press a
     // button. Without this the first KEY XMIT press publishes a track the agent hasn't
     // subscribed to yet, so the composed turn is lost (the "press AUTO XMIT first" bug).
-    setError("");
-
     const url = new URL(
       process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ?? "/api/connection-details",
       window.location.origin
@@ -52,7 +50,6 @@ export default function Page() {
 
     const response = await fetch(url.toString());
     if (!response.ok) {
-      setError("Connection failed");
       return;
     }
 
