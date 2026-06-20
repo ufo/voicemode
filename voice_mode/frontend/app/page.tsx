@@ -69,7 +69,7 @@ export default function Page() {
   // COM LINK: the connect/disconnect toggle. Its title never changes (70s hardware
   // button) — it just lights blue while connected. Pressing it when connected disconnects
   // (ends the conversation — the old "COM HALT"); when disconnected it joins the room and
-  // arms audio playback. The page-reload "cycle" lives on its own COM CYCLE button now.
+  // arms audio playback. The page-reload "cycle" lives on its own CLEAR button now.
   const onComm = useCallback(async () => {
     if (room.state === ConnectionState.Connected) {
       await room.disconnect();
@@ -86,7 +86,7 @@ export default function Page() {
     }
   }, [room, connect]);
 
-  // COM CYCLE: hard reset — reload the page for a clean slate (drops the room, wipes the
+  // CLEAR: hard reset — reload the page for a clean slate (drops the room, wipes the
   // transcript, frees the mic). Its own button now (was a COM LINK post-call sub-state).
   const onCycle = useCallback(() => {
     window.location.reload();
@@ -211,11 +211,13 @@ export default function Page() {
   }, [room]);
 
   return (
-    <main data-lk-theme="default" className="h-full grid content-center bg-[var(--lk-bg)]">
+    <main data-lk-theme="default" className="h-[100dvh] flex flex-col bg-[var(--lk-bg)] p-2 overflow-hidden">
       <RoomContext.Provider value={room}>
-        <div className="hal-console max-w-[640px] w-[94vw] mx-auto max-h-[96vh] flex flex-col gap-4">
+        <div className="hal-console max-w-[640px] w-[94vw] mx-auto flex-1 min-h-0 flex flex-col">
           <HalTitleBar connected={connected} />
+          <div className="hal-divider" />
           <AgentVisualizer connected={connected} />
+          <div className="hal-divider" />
           <ButtonBar
             connected={connected}
             micEnabled={micEnabled}
@@ -227,6 +229,7 @@ export default function Page() {
             onVoiceInput={onVoiceInput}
             onCompose={onCompose}
           />
+          <div className="hal-divider" />
           <TranscriptionView />
           <RoomAudioRenderer />
           <AgentStatus />
@@ -291,12 +294,11 @@ function ButtonBar(props: {
   return (
     <div className="flex flex-col items-center gap-2">
       <div className="flex w-full gap-2 justify-center">
-        {/* COM CYCLE: page reload / clean slate. Same dim-blue style as COM LINK. */}
+        {/* CLEAR: page reload / clean slate. Always wears the bright "activated" face
+            (same as AUTO XMIT when connected) since the reload action is always available. */}
         <div className="hal-key flex-1 basis-0 min-w-0 aspect-square">
-          <button className="hal-btn w-full h-full flex items-center justify-center text-center leading-tight" onClick={props.onCycle}>
-            COM
-            <br />
-            CYCLE
+          <button className="hal-btn hal-btn--bright w-full h-full flex items-center justify-center text-center leading-tight" onClick={props.onCycle}>
+            CLEAR
           </button>
         </div>
         {/* COM LINK: connect/disconnect toggle (fixed title); lights blue while connected. */}
@@ -311,7 +313,7 @@ function ButtonBar(props: {
           </button>
         </div>
         {/* AUTO XMIT: VAD free-hand listening (fixed title). Sits in the dim base style
-            like COM CYCLE until connected, then brightens to show it's functional; lit
+            until connected, then brightens to show it's functional; lit
             red while transmitting. Disabled until connected. */}
         <div className="hal-key flex-1 basis-0 min-w-0 aspect-square">
           <button

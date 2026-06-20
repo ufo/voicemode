@@ -14,7 +14,7 @@ export default function TranscriptionView() {
   }, [combinedTranscriptions]);
 
   return (
-    <div className="ghost-panel relative h-[220px] w-full rounded-md overflow-hidden">
+    <div className="ghost-panel relative flex-1 min-h-0 w-full rounded-md overflow-hidden">
       {/* Fade-out gradient mask (matches the panel's dark-blue background) */}
       <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-[var(--ghost-panel-bg)] to-transparent z-10 pointer-events-none" />
       <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[var(--ghost-panel-bg)] to-transparent z-10 pointer-events-none" />

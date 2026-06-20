@@ -121,7 +121,7 @@ button.hal-btn {
   font-family: var(--font-retro-mono), ui-monospace, "Courier New", monospace;
   text-transform: uppercase;
   /* Square buttons with two-line labels — each title wraps at its space
-     ("COM CYCLE" → COM / CYCLE). Equal-width columns (flex-1 basis-0 min-w-0)
+     ("AUTO XMIT" → AUTO / XMIT). Equal-width columns (flex-1 basis-0 min-w-0)
      keep all four the same size regardless of label; the button centers the
      wrapped text. */
   letter-spacing: 0.04em;
@@ -441,4 +441,104 @@ button.hal-btn--active {
   text-shadow:
     0 0 6px rgba(150, 200, 255, 0.65),
     0 0 16px rgba(120, 180, 255, 0.32);
+}
+
+/* --- Console shell: brushed-chrome bezel around the whole panel -----------
+   The HAL eye is set in a metal bezel (the conic "chrome ring" in
+   ReactiveVisualizer). This wraps the entire console — title, eye, keys and
+   transcript — in the same brushed-metal frame: a dark lens-housing body with
+   a conic chrome ring, a bright outer rim and a dark inner groove. The bezel
+   lives as padding so the children inset inside the frame; the gaps between
+   sections fall back to the dark housing, reading as one console body. */
+.hal-console {
+  position: relative;
+  padding: 14px;
+  border-radius: 22px;
+  /* Dark housing behind the bezel — same near-black lens body as the eye. */
+  background: radial-gradient(125% 125% at 50% 0%, #15161a 0%, #0a0b0e 62%, #050507 100%);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    /* bright outer rim + seating line, like the eye's outer chrome edge */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+/* The chrome ring itself: the eye's conic gradient (bright near top & bottom,
+   dark at the sides) painted only in the bezel band via a content-box mask, so
+   it forms a rounded metal frame instead of filling the whole box. */
+.hal-console::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 14px; /* must match .hal-console padding — defines the ring width */
+  background: conic-gradient(
+    from -90deg,
+    #f6f8fa 0%,
+    #aeb4ba 8%,
+    #43474c 20%,
+    #cfd3d7 32%,
+    #5f656b 50%,
+    #2b2d30 62%,
+    #dce0e3 74%,
+    #80868c 85%,
+    #3a3d41 94%,
+    #f6f8fa 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Dark inner groove where the chrome meets the interior — the eye's inner edge
+   stroke, here a thin recessed line just inside the bezel. */
+.hal-console::after {
+  content: "";
+  position: absolute;
+  inset: 13px;
+  z-index: 1;
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* --- Chrome divider between console sections ------------------------------
+   The same brushed metal as the bezel, as a horizontal strip separating the
+   four main parts (HAL101 plate, eye, key bar, transcript). The sheen runs
+   along the bar — the eye's conic chrome stops mapped to a left→right sweep —
+   while a vertical overlay rounds it like a metal rib with a bright top rim
+   and dark bottom groove, matching the bezel's outer-rim/inner-groove edges. */
+.hal-divider {
+  flex: 0 0 auto;
+  height: 12px;
+  border-radius: 0;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0.12) 18%,
+      rgba(0, 0, 0, 0) 46%,
+      rgba(0, 0, 0, 0.38) 100%
+    ),
+    linear-gradient(
+      90deg,
+      #f6f8fa 0%,
+      #aeb4ba 8%,
+      #43474c 20%,
+      #cfd3d7 32%,
+      #5f656b 50%,
+      #2b2d30 62%,
+      #dce0e3 74%,
+      #80868c 85%,
+      #3a3d41 94%,
+      #f6f8fa 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.5);
 }
