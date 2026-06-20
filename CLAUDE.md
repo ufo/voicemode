@@ -205,6 +205,13 @@ same room as the agent participant `voice-mode-bot` (STT/TTS via the local speac
   (`voice-mode-bot`) being present, so it only burns red while the agent is in the room and sits
   dormant (dark glass) between turns.
 
+- **A "frontend bug" is a stale cached build until proven otherwise.** `next start` serves the
+  prebuilt `.next`, and the phone's Chrome caches aggressively — so a UI symptom you can't reproduce
+  in a fresh build is almost certainly an old bundle on the phone, not live code. (Cost us a chase
+  after "first reply right-aligned, the rest left": the classifier was correct the whole time;
+  `lm=T` on every user segment.) Always rebuild + restart + hard-reload the phone before debugging
+  a reported UI issue, and confirm against the harness (below) which serves the current bundle.
+
 ### Edit → see-it workflow
 
 - **Frontend changes** (`voice_mode/frontend/`) need a rebuild + server restart + phone reload:
@@ -215,3 +222,28 @@ same room as the agent participant `voice-mode-bot` (STT/TTS via the local speac
 - The controlled chrome-devtools Chrome runs with `prefers-reduced-motion: reduce`, so every CSS
   animation (scan band, LED pulse, text flicker, caret blink) is invisible there but live on the
   phone. Static styling previews fine; motion does not.
+
+### Testing the compose flow without the phone (CDP fake-mic harness)
+
+You can exercise a full KEY XMIT compose turn from a script — no phone, no real mic — which is the
+fastest way to confirm transcript classification / alignment against the *current* build.
+
+- **Fake mic:** synthesize a few sentences with ~1s silence gaps (so the agent's VAD segments them)
+  via speaches `POST /v1/audio/speech` (`am_michael`), concatenate with `ffmpeg` to a 48 kHz mono
+  16-bit WAV. The gaps are what produce multiple transcript segments in one turn.
+- **Drive Chrome over CDP:** launch your own Chrome with `--remote-debugging-port`, a throwaway
+  `--user-data-dir`, `--use-fake-ui-for-media-stream`, and
+  `--use-file-for-fake-audio-capture=<wav>`, then talk CDP (the `.venv-lk` Python has `websockets`).
+  Use `Runtime.evaluate` to click buttons by text — `COM LINK` (connect), `KEY XMIT` (start), then
+  `RCV` (commit) — and to read each transcript bubble's class (`self-end` = user/right,
+  `self-start` = assistant/left). The chrome-devtools MCP can't help here: it manages its own browser
+  and can't inject the fake-audio launch flags.
+- **Timing rule (important):** the agent (`voice-mode-bot`) is only in the room *during* an active
+  `converse()` call, and the wait loop ends a turn the instant the room has no remote participant.
+  So make the harness fully autonomous and run it in the background **first**, then immediately call
+  `converse(transport="livekit", skip_tts=true)` so the bot is present while the harness connects and
+  drives the turn. Kill the harness Chrome afterwards (match its `user-data-dir`) so it doesn't linger
+  in the room feeding looped fake audio into the next turn.
+- **Limit:** desktop keeps a stable mic track sid, so the harness can't reproduce phone-only track
+  churn. It proves the classifier correct and catches regressions; it is not a substitute for a real
+  phone repro of environment-specific issues.
