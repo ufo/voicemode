@@ -212,6 +212,31 @@ same room as the agent participant `voice-mode-bot` (STT/TTS via the local speac
   `lm=T` on every user segment.) Always rebuild + restart + hard-reload the phone before debugging
   a reported UI issue, and confirm against the harness (below) which serves the current bundle.
 
+### Networking: media node_ip vs signaling URL (two addresses, two mechanisms)
+
+The phone needs two reachable addresses, and they are set in completely different ways:
+
+- **Signaling** — `serverUrl` from `app/api/connection-details/route.ts`, read from `LIVEKIT_URL` in
+  `frontend/.env.local`. This CAN be a bare hostname (`ws://host:7880`); the phone re-resolves it on
+  every connect, so the frontend never needs a rebuild/restart when the machine's IP changes. (Note:
+  `route.ts` captures `LIVEKIT_URL` at module load, so *editing* `.env.local` does require a restart —
+  but a stable hostname value never changes, so network switches don't.)
+- **Media** — the LiveKit server's `--node-ip`, which is written into ICE candidates and therefore
+  MUST be a raw IPv4, fixed at server launch. A hostname in `.env.local` does NOT cover this path.
+
+Consequence: a hostname in `.env.local` makes *signaling* network-agnostic, but **media still rides the
+raw `node_ip`**. If the phone resolves signaling to a reachable IP while `node_ip` is unreachable from
+the phone, you get a connected-but-silent call: WebSocket up, HAL eye shows, no audio.
+
+`node_ip` is no longer pinned in `livekit.yaml`. It is resolved at launch by `../resolve-node-ip.ps1`
+(in `C:\devel\misc\voice\`) and passed via `--node-ip` from `start-livekit.bat`. The resolver uses an
+ordered `$PreferredPrefixes` list (CONTACT VPN `10.27.80.` first, then home `192.168.178.`): it
+searches ALL *Up* adapters so it can select the VPN tunnel, but restricts the no-match fallback to
+*physical* adapters so it never advertises a Hyper-V/WSL address. Stale IPs on Disconnected adapters
+are filtered out. Override with `$env:LIVEKIT_NODE_IP`. The old DNS/FQDN approach was removed —
+corporate DNS returned stale/VPN-side records. **Restart the LiveKit server (not the frontend) after
+flipping the VPN** — `node_ip` is fixed at launch.
+
 ### Edit → see-it workflow
 
 - **Frontend changes** (`voice_mode/frontend/`) need a rebuild + server restart + phone reload:
