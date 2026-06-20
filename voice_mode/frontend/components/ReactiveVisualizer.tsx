@@ -113,8 +113,9 @@ export default function ReactiveVisualizer({
       let energy = 0;
       for (let i = 0; i < n; i++) {
         const v = raw && raw.length ? raw[i % raw.length] || 0 : 0;
-        // Attack fast, release slow -> punchy but smooth.
-        smooth[i] = v > smooth[i] ? lerp(smooth[i], v, 0.6) : lerp(smooth[i], v, 0.12);
+        // Attack fast, release quick -> the eye snaps up on sound and bounces back down
+        // promptly instead of lingering (release was 0.12, too sluggish at the small size).
+        smooth[i] = v > smooth[i] ? lerp(smooth[i], v, 0.6) : lerp(smooth[i], v, 0.28);
         energy += smooth[i];
       }
       energy /= n;
@@ -122,8 +123,13 @@ export default function ReactiveVisualizer({
       for (let i = 0; i < 6; i++) bass += smooth[i];
       bass /= 6;
 
-      level = lerp(level, clamp(energy * 3.0, 0, 1), energy * 3.0 > level ? 0.5 : 0.1);
-      bassS = lerp(bassS, clamp(bass * 2.8, 0, 1), bass * 2.8 > bassS ? 0.6 : 0.12);
+      // Gain is high so ordinary voice drives `level`/`bassS` to ~1, which pushes the glow
+      // out to the chrome ring on speech. The fast release (0.25/0.28) then snaps it back
+      // down between words so it bounces instead of sitting pinned at the ring.
+      const lvlTarget = clamp(energy * 6.0, 0, 1);
+      const bassTarget = clamp(bass * 5.0, 0, 1);
+      level = lerp(level, lvlTarget, lvlTarget > level ? 0.5 : 0.25);
+      bassS = lerp(bassS, bassTarget, bassTarget > bassS ? 0.6 : 0.28);
 
       // HAL is never fully dark; a faint breathing baseline keeps the eye "awake".
       const st = stateRef.current;
@@ -200,8 +206,16 @@ export default function ReactiveVisualizer({
       ctx.clip();
 
       if (connectedRef.current) {
+        // Agent presence (gf) sets only the RESTING size — a small light between turns that
+        // eases up once the agent joins. Audio activity (act) then drives the eye out to the
+        // chrome ring REGARDLESS of presence, so speaking always inflates it. Crucially gf
+        // must NOT multiply the whole glow: doing so crushed the audio swing to ~0.34·lensR
+        // whenever the bot was away, so the eye stayed tiny no matter how loud you spoke.
+        const rest = 0.30 + 0.28 * gf; // ~0.40 (bot away) .. 0.58 (bot present), at rest
+        const reach = clamp(rest + act * 1.0, rest, 0.98); // speech pushes out to the ring
+
         // --- The red lens glow (fades out before the clip edge) ---
-        const glowR = lensR * (0.82 + act * 0.16) * gf;
+        const glowR = lensR * reach;
         const lens = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
         lens.addColorStop(0, `hsla(${20 + hot * 30}, 100%, ${72 + hot * 22}%, 1)`);
         lens.addColorStop(0.16, `hsla(${6 + hot * 18}, 100%, ${55 + hot * 18}%, 0.98)`);
@@ -215,7 +229,7 @@ export default function ReactiveVisualizer({
 
         // --- Additive bloom, also confined within the lens ---
         ctx.globalCompositeOperation = "lighter";
-        const bloomR = lensR * (0.75 + act * 0.22) * gf;
+        const bloomR = lensR * clamp(reach - 0.05, 0.2, 0.96);
         const bloom = ctx.createRadialGradient(cx, cy, glowR * 0.3, cx, cy, bloomR);
         bloom.addColorStop(0, `hsla(2, 100%, 50%, ${0.18 + act * 0.4})`);
         bloom.addColorStop(1, "hsla(2, 100%, 50%, 0)");
@@ -224,8 +238,9 @@ export default function ReactiveVisualizer({
         ctx.arc(cx, cy, bloomR, 0, Math.PI * 2);
         ctx.fill();
 
-        // --- The pupil: a bright hot core that pulses with the low end ---
-        const pupilR = lensR * (0.11 + bassS * 0.16 + breathe * 0.03) * gf;
+        // --- The pupil: a bright hot core that pulses with the low end (not gf-gated, so it
+        // reacts to your voice whether or not the agent is in the room) ---
+        const pupilR = lensR * (0.09 + bassS * 0.26 + breathe * 0.03);
         const pupil = ctx.createRadialGradient(cx, cy, 0, cx, cy, pupilR);
         pupil.addColorStop(0, "rgba(255,255,245,0.98)");
         pupil.addColorStop(0.4, `hsla(${42 + hot * 10}, 100%, 70%, 0.92)`);
