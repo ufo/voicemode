@@ -203,7 +203,15 @@ same room as the agent participant `voice-mode-bot` (STT/TTS via the local speac
 
 - **The red HAL eye** (`components/ReactiveVisualizer.tsx`) is gated on a remote participant
   (`voice-mode-bot`) being present, so it only burns red while the agent is in the room and sits
-  dormant (dark glass) between turns.
+  dormant (dark glass) between turns. The lens itself is now the real photo `app/eye.png` drawn
+  onto the canvas as the base; the reactive red glow/bloom/pupil composite *additively* on top so
+  it still pulses with the voice. Grille panels flank the eye and the surrounding chrome (console
+  frame, dividers, grille bezels) is dimmed gunmetal so the bright eye ring stays the focal point.
+
+- **Static assets in `app/` are NOT served as URLs** — only `public/` is. To use an image like
+  `app/eye.png` on the canvas, `import eyeSrc from "../app/eye.png"` and read `eyeSrc.src`; webpack
+  rewrites it to a served URL (typed via `next/image-types/global` in `next-env.d.ts`). Referencing
+  `/eye.png` for a file under `app/` 404s.
 
 - **A "frontend bug" is a stale cached build until proven otherwise.** `next start` serves the
   prebuilt `.next`, and the phone's Chrome caches aggressively — so a UI symptom you can't reproduce
