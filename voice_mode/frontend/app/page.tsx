@@ -28,9 +28,6 @@ export default function Page() {
   // agent only exists in the room while it's listening for this turn's reply.
   const [composing, setComposing] = useState(false);
   const [botPresent, setBotPresent] = useState(false);
-  // COM button lifecycle: false+!connected = LINK (join), connected = HALT (leave the
-  // room), halted = CYCLE (reload). Set when the user halts a live conversation.
-  const [halted, setHalted] = useState(false);
   // Whether the mic was already open (AUTO XMIT) when a compose turn began, so commit can
   // restore that state rather than leaving the mic on and lighting AUTO XMIT up.
   const micOpenBeforeCompose = useRef(false);
@@ -69,21 +66,13 @@ export default function Page() {
     await room.localParticipant.setMicrophoneEnabled(false);
   }, [room]);
 
-  // COM START / COM RESET: the only button that owns the room lifecycle. When not
-  // connected it joins (+ opens mic) and arms audio playback; once connected the same
-  // button hard-resets by reloading (drops the room, wipes the transcript, frees the mic).
+  // COM LINK: the connect/disconnect toggle. Its title never changes (70s hardware
+  // button) — it just lights blue while connected. Pressing it when connected disconnects
+  // (ends the conversation — the old "COM HALT"); when disconnected it joins the room and
+  // arms audio playback. The page-reload "cycle" lives on its own COM CYCLE button now.
   const onComm = useCallback(async () => {
-    // Three states on one button:
-    //   COM HALT  (connected)            → fully stop the conversation, leaving the room.
-    //   COM CYCLE (halted, post-call)    → reload the page for a clean slate.
-    //   COM LINK  (fresh, not connected) → join the room (+ arm audio playback).
     if (room.state === ConnectionState.Connected) {
       await room.disconnect();
-      setHalted(true);
-      return;
-    }
-    if (halted) {
-      window.location.reload();
       return;
     }
     await connect();
@@ -95,7 +84,13 @@ export default function Page() {
     } catch {
       // No-op: harmless if there's no audio context yet.
     }
-  }, [room, connect, halted]);
+  }, [room, connect]);
+
+  // COM CYCLE: hard reset — reload the page for a clean slate (drops the room, wipes the
+  // transcript, frees the mic). Its own button now (was a COM LINK post-call sub-state).
+  const onCycle = useCallback(() => {
+    window.location.reload();
+  }, []);
 
   // AUTO XMIT / VOX: VAD free-hand listening. Toggles the mic so you can mute/unmute
   // without dropping the room. Gated on connected (disabled otherwise), so the room is
@@ -226,9 +221,9 @@ export default function Page() {
             micEnabled={micEnabled}
             composing={composing}
             botPresent={botPresent}
-            halted={halted}
             error={error}
             onComm={onComm}
+            onCycle={onCycle}
             onVoiceInput={onVoiceInput}
             onCompose={onCompose}
           />
@@ -269,7 +264,7 @@ function AgentVisualizer(props: { connected: boolean }) {
     );
   }
   return (
-    <div className="h-[360px] w-full">
+    <div className="h-[240px] w-full">
       <ReactiveVisualizer trackRef={audioTrack} state={agentState} connected={props.connected} />
     </div>
   );
@@ -280,9 +275,9 @@ function ButtonBar(props: {
   micEnabled: boolean;
   composing: boolean;
   botPresent: boolean;
-  halted: boolean;
   error: string;
   onComm: () => void;
+  onCycle: () => void;
   onVoiceInput: () => void;
   onCompose: () => void;
 }) {
@@ -295,31 +290,52 @@ function ButtonBar(props: {
   const composeEnabled = props.botPresent || props.composing;
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="flex w-full gap-3 justify-center">
-        {/* COM LINK → COM HALT → COM CYCLE: the room-lifecycle button (see onComm). */}
-        <div className="hal-key flex-1 basis-0">
-          <button className="hal-btn w-full whitespace-nowrap" onClick={props.onComm}>
-            {props.connected ? "COM HALT" : props.halted ? "COM CYCLE" : "COM LINK"}
+      <div className="flex w-full gap-2 justify-center">
+        {/* COM CYCLE: page reload / clean slate. Same dim-blue style as COM LINK. */}
+        <div className="hal-key flex-1 basis-0 min-w-0 aspect-square">
+          <button className="hal-btn w-full h-full flex items-center justify-center text-center leading-tight" onClick={props.onCycle}>
+            COM
+            <br />
+            CYCLE
           </button>
         </div>
-        {/* AUTO XMIT → VOX: VAD free-hand listening; disabled until connected. */}
-        <div className="hal-key flex-1 basis-0">
+        {/* COM LINK: connect/disconnect toggle (fixed title); lights blue while connected. */}
+        <div className="hal-key flex-1 basis-0 min-w-0 aspect-square">
           <button
-            className={`hal-btn w-full whitespace-nowrap hal-btn--bright ${voxLive ? "hal-btn--active" : ""}`}
+            className={`hal-btn w-full h-full flex items-center justify-center text-center leading-tight ${props.connected ? "hal-btn--link-active" : ""}`}
+            onClick={props.onComm}
+          >
+            COM
+            <br />
+            LINK
+          </button>
+        </div>
+        {/* AUTO XMIT: VAD free-hand listening (fixed title). Sits in the dim base style
+            like COM CYCLE until connected, then brightens to show it's functional; lit
+            red while transmitting. Disabled until connected. */}
+        <div className="hal-key flex-1 basis-0 min-w-0 aspect-square">
+          <button
+            className={`hal-btn w-full h-full flex items-center justify-center text-center leading-tight ${props.connected ? "hal-btn--bright" : ""} ${voxLive ? "hal-btn--active" : ""}`}
             onClick={props.onVoiceInput}
             disabled={!props.connected}
           >
-            {voxLive ? "VOX" : "AUTO XMIT"}
+            AUTO
+            <br />
+            XMIT
           </button>
         </div>
-        {/* KEY XMIT → RCV: push-to-talk compose; disabled until the agent is listening. */}
-        <div className="hal-key flex-1 basis-0">
+        {/* KEY XMIT: push-to-talk compose (fixed title). Dim base style until it's actually
+            usable (the agent is listening), then brightens to show it's functional; lit red
+            while composing. Disabled until the agent is listening. */}
+        <div className="hal-key flex-1 basis-0 min-w-0 aspect-square">
           <button
-            className={`hal-btn w-full whitespace-nowrap hal-btn--bright ${props.composing ? "hal-btn--active" : ""}`}
+            className={`hal-btn w-full h-full flex items-center justify-center text-center leading-tight ${composeEnabled ? "hal-btn--bright" : ""} ${props.composing ? "hal-btn--active" : ""}`}
             onClick={props.onCompose}
             disabled={!composeEnabled}
           >
-            {props.composing ? "RCV" : "KEY XMIT"}
+            KEY
+            <br />
+            XMIT
           </button>
         </div>
       </div>

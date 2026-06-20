@@ -120,13 +120,14 @@
 button.hal-btn {
   font-family: var(--font-retro-mono), ui-monospace, "Courier New", monospace;
   text-transform: uppercase;
-  /* Tight tracking + modest horizontal padding so the longest labels
-     ("COM RESET" / "KEY XMIT") fit inside the equal-width flex columns on
-     narrow phones (~320-360px) without overflowing onto the border. */
-  letter-spacing: 0.07em;
-  font-size: 0.72rem;
+  /* Square buttons with two-line labels — each title wraps at its space
+     ("COM CYCLE" → COM / CYCLE). Equal-width columns (flex-1 basis-0 min-w-0)
+     keep all four the same size regardless of label; the button centers the
+     wrapped text. */
+  letter-spacing: 0.04em;
+  font-size: 0.8rem;
   color: #0a3346;
-  padding: 0.7rem 0.4rem;
+  padding: 0.5rem 0.3rem;
   border-radius: 5px;
   border: 1px solid rgba(90, 160, 235, 0.6);
   background: linear-gradient(180deg, #4d79b3 0%, #2c5187 100%);
@@ -174,6 +175,19 @@ button.hal-btn {
   box-shadow:
     0 0 8px rgba(70, 150, 230, 0.35),
     inset 0 0 18px rgba(20, 55, 100, 0.8);
+}
+
+/* COM LINK while connected: a steady, brighter blue glow so the room-lifecycle button
+   reads as "engaged/pressed" without changing its title (70s hardware-button feel).
+   Same specificity as the base `button.hal-btn`, so it must come AFTER it to win. */
+button.hal-btn--link-active {
+  /* Keep the resting dark font color (no bright/light text when pressed) — only the
+     face goes deep electric blue with a strong blue glow. */
+  border-color: rgba(90, 150, 255, 1);
+  background: linear-gradient(180deg, #3a7bff 0%, #123fd6 100%);
+  box-shadow:
+    0 0 30px rgba(55, 110, 255, 1),
+    inset 0 0 18px rgba(70, 130, 255, 0.85);
 }
 
 /* VOX XMIT / KEY XMIT — the two transmit controls sit brighter than COM RESET
